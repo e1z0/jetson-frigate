@@ -1,6 +1,5 @@
 # jetson-frigate
-Frigate on Jetson Nano research
-
+Frigate on Jetson Nano with ffmpeg 4.1.3 cuda acceleration patches, docker build files and many more.
 
 # Install
 
