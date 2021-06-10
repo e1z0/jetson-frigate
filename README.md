@@ -1,5 +1,5 @@
 # jetson-frigate
-[Frigate](https://github.com/blakeblackshear/frigate) on Jetson Nano with ffmpeg 4.1.3 NVMPI patches for encoding/decoding hardware acceleration, docker build files and many more.
+[Frigate](https://github.com/blakeblackshear/frigate) on [Jetson Nano](https://developer.nvidia.com/embedded/jetson-nano-developer-kit) with ffmpeg 4.1.3 NVMPI patches for encoding/decoding hardware acceleration, docker build files and many more.
 
 # Install
 
