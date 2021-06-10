@@ -31,3 +31,35 @@ Build your image (now GPU available during build):
 ```
 docker build -t my_image_name:latest .
 ```
+
+## Build ffmpeg and frigate
+
+First you need to build ffmpeg with jetson nano support patches
+```
+make jetson_ffmpeg
+```
+
+Now you can build frigate itself
+```
+make jetson_frigate
+```
+
+After that you will have **frigate:latest** docker image.
+
+# Running
+```
+docker run -d \
+ --runtime nvidia \
+ --gpus all \
+ --name frigate \
+ --restart unless-stopped \
+ --privileged \
+ --shm-size=1024m \
+ -p 5000:5000 \
+ -v /path/to/config:/config:ro \
+ -v /etc/localtime:/etc/localtime:ro \
+ -v /media/storage:/media/frigate \
+ --device /dev/bus/usb:/dev/bus/usb \
+ -e FRIGATE_RTSP_PASSWORD='pass' \
+ frigate:latest
+```
