@@ -31,6 +31,21 @@ Build your image (now GPU available during build):
 ```
 docker build -t my_image_name:latest .
 ```
+## Download frigate
+
+```
+git clone https://github.com/blakeblackshear/frigate.git
+cd frigate
+```
+
+## Download docker build files and replace them
+
+```
+git clone https://github.com/e1z0/jetson-frigate.git
+rm -rf docker Makefile
+mv jetson-frigate/docker .
+mv jetson-frigate/Makefile .
+```
 
 ## Build ffmpeg and frigate
 
@@ -46,7 +61,7 @@ make jetson_frigate
 
 After that you will have **frigate:latest** docker image.
 
-# Running
+## Running
 ```
 docker run -d \
  --runtime nvidia \
