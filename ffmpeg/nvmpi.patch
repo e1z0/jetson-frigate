@@ -1,0 +1,2292 @@
+diff -ruN ffmpeg-4.3.1-orig/configure ffmpeg-4.3.1/configure
+--- ffmpeg-4.3.1-orig/configure	2021-06-10 14:52:01.805097966 +0300
++++ ffmpeg-4.3.1/configure	2021-06-10 14:56:32.246780445 +0300
+@@ -345,6 +345,7 @@
+   --disable-vaapi          disable Video Acceleration API (mainly Unix/Intel) code [autodetect]
+   --disable-vdpau          disable Nvidia Video Decode and Presentation API for Unix code [autodetect]
+   --disable-videotoolbox   disable VideoToolbox code [autodetect]
++  --enable-nvmpi           enable nvmpi code
+ 
+ Toolchain options:
+   --arch=ARCH              select architecture [$arch]
+@@ -1861,6 +1862,7 @@
+     mmal
+     omx
+     opencl
++    nvmpi
+     vulkan
+ "
+ 
+@@ -3053,11 +3055,14 @@
+ h264_mf_encoder_deps="mediafoundation"
+ h264_mmal_decoder_deps="mmal"
+ h264_nvenc_encoder_deps="nvenc"
++h264_nvmpi_encoder_deps="nvmpi"
+ h264_omx_encoder_deps="omx"
+ h264_qsv_decoder_select="h264_mp4toannexb_bsf qsvdec"
+ h264_qsv_encoder_select="qsvenc"
+ h264_rkmpp_decoder_deps="rkmpp"
+ h264_rkmpp_decoder_select="h264_mp4toannexb_bsf"
++h264_nvmpi_decoder_deps="nvmpi"
++h264_nvmpi_decoder_select="h264_mp4toannexb_bsf"
+ h264_vaapi_encoder_select="cbs_h264 vaapi_encode"
+ h264_v4l2m2m_decoder_deps="v4l2_m2m h264_v4l2_m2m"
+ h264_v4l2m2m_decoder_select="h264_mp4toannexb_bsf"
+@@ -3069,10 +3074,13 @@
+ hevc_mediacodec_decoder_select="hevc_mp4toannexb_bsf hevc_parser"
+ hevc_mf_encoder_deps="mediafoundation"
+ hevc_nvenc_encoder_deps="nvenc"
++hevc_nvmpi_encoder_deps="nvmpi"
+ hevc_qsv_decoder_select="hevc_mp4toannexb_bsf qsvdec"
+ hevc_qsv_encoder_select="hevcparse qsvenc"
+ hevc_rkmpp_decoder_deps="rkmpp"
+ hevc_rkmpp_decoder_select="hevc_mp4toannexb_bsf"
++hevc_nvmpi_decoder_deps="nvmpi"
++hevc_nvmpi_decoder_select="hevc_mp4toannexb_bsf"
+ hevc_vaapi_encoder_deps="VAEncPictureParameterBufferHEVC"
+ hevc_vaapi_encoder_select="cbs_h265 vaapi_encode"
+ hevc_v4l2m2m_decoder_deps="v4l2_m2m hevc_v4l2_m2m"
+@@ -3089,6 +3097,7 @@
+ mpeg1_v4l2m2m_decoder_deps="v4l2_m2m mpeg1_v4l2_m2m"
+ mpeg2_crystalhd_decoder_select="crystalhd"
+ mpeg2_cuvid_decoder_deps="cuvid"
++mpeg2_nvmpi_decoder_deps="nvmpi"
+ mpeg2_mmal_decoder_deps="mmal"
+ mpeg2_mediacodec_decoder_deps="mediacodec"
+ mpeg2_qsv_decoder_select="qsvdec"
+@@ -3097,6 +3106,7 @@
+ mpeg2_v4l2m2m_decoder_deps="v4l2_m2m mpeg2_v4l2_m2m"
+ mpeg4_crystalhd_decoder_select="crystalhd"
+ mpeg4_cuvid_decoder_deps="cuvid"
++mpeg4_nvmpi_decoder_deps="nvmpi"
+ mpeg4_mediacodec_decoder_deps="mediacodec"
+ mpeg4_mmal_decoder_deps="mmal"
+ mpeg4_omx_encoder_deps="omx"
+@@ -3111,6 +3121,7 @@
+ vc1_qsv_decoder_select="qsvdec"
+ vc1_v4l2m2m_decoder_deps="v4l2_m2m vc1_v4l2_m2m"
+ vp8_cuvid_decoder_deps="cuvid"
++vp8_nvmpi_decoder_deps="nvmpi"
+ vp8_mediacodec_decoder_deps="mediacodec"
+ vp8_qsv_decoder_select="qsvdec"
+ vp8_rkmpp_decoder_deps="rkmpp"
+@@ -3119,6 +3130,7 @@
+ vp8_v4l2m2m_decoder_deps="v4l2_m2m vp8_v4l2_m2m"
+ vp8_v4l2m2m_encoder_deps="v4l2_m2m vp8_v4l2_m2m"
+ vp9_cuvid_decoder_deps="cuvid"
++vp9_nvmpi_decoder_deps="nvmpi"
+ vp9_mediacodec_decoder_deps="mediacodec"
+ vp9_qsv_decoder_select="qsvdec"
+ vp9_rkmpp_decoder_deps="rkmpp"
+@@ -6476,6 +6488,7 @@
+                                  die "ERROR: rkmpp requires --enable-libdrm"; }
+                              }
+ enabled vapoursynth       && require_pkg_config vapoursynth "vapoursynth-script >= 42" VSScript.h vsscript_init
++enabled nvmpi		  && require_pkg_config nvmpi nvmpi nvmpi.h nvmpi_create_decoder
+ 
+ 
+ if enabled gcrypt; then
+diff -ruN ffmpeg-4.3.1-orig/libavcodec/Makefile ffmpeg-4.3.1/libavcodec/Makefile
+--- ffmpeg-4.3.1-orig/libavcodec/Makefile	2021-06-10 14:52:01.545092562 +0300
++++ ffmpeg-4.3.1/libavcodec/Makefile	2021-06-10 14:58:49.845707701 +0300
+@@ -366,6 +366,8 @@
+ OBJS-$(CONFIG_H264_NVENC_ENCODER)      += nvenc_h264.o
+ OBJS-$(CONFIG_NVENC_ENCODER)           += nvenc_h264.o
+ OBJS-$(CONFIG_NVENC_H264_ENCODER)      += nvenc_h264.o
++OBJS-$(CONFIG_H264_NVMPI_DECODER)      += nvmpi_dec.o
++OBJS-$(CONFIG_H264_NVMPI_ENCODER)      += nvmpi_enc.o
+ OBJS-$(CONFIG_H264_OMX_ENCODER)        += omx.o
+ OBJS-$(CONFIG_H264_QSV_DECODER)        += qsvdec_h2645.o
+ OBJS-$(CONFIG_H264_QSV_ENCODER)        += qsvenc_h264.o
+@@ -393,6 +395,8 @@
+ OBJS-$(CONFIG_HEVC_RKMPP_DECODER)      += rkmppdec.o
+ OBJS-$(CONFIG_HEVC_VAAPI_ENCODER)      += vaapi_encode_h265.o h265_profile_level.o
+ OBJS-$(CONFIG_HEVC_V4L2M2M_DECODER)    += v4l2_m2m_dec.o
++OBJS-$(CONFIG_HEVC_NVMPI_DECODER)      += nvmpi_dec.o
++OBJS-$(CONFIG_HEVC_NVMPI_ENCODER)      += nvmpi_enc.o
+ OBJS-$(CONFIG_HEVC_V4L2M2M_ENCODER)    += v4l2_m2m_enc.o
+ OBJS-$(CONFIG_HNM4_VIDEO_DECODER)      += hnm4video.o
+ OBJS-$(CONFIG_HQ_HQA_DECODER)          += hq_hqa.o hq_hqadata.o hq_hqadsp.o \
+@@ -481,11 +485,13 @@
+ OBJS-$(CONFIG_MPEG2VIDEO_DECODER)      += mpeg12dec.o mpeg12.o mpeg12data.o
+ OBJS-$(CONFIG_MPEG2VIDEO_ENCODER)      += mpeg12enc.o mpeg12.o
+ OBJS-$(CONFIG_MPEG2_CUVID_DECODER)     += cuviddec.o
++OBJS-$(CONFIG_MPEG2_NVMPI_DECODER)     += nvmpi_dec.o
+ OBJS-$(CONFIG_MPEG2_MEDIACODEC_DECODER) += mediacodecdec.o
+ OBJS-$(CONFIG_MPEG2_VAAPI_ENCODER)     += vaapi_encode_mpeg2.o
+ OBJS-$(CONFIG_MPEG2_V4L2M2M_DECODER)   += v4l2_m2m_dec.o
+ OBJS-$(CONFIG_MPEG4_DECODER)           += xvididct.o
+ OBJS-$(CONFIG_MPEG4_CUVID_DECODER)     += cuviddec.o
++OBJS-$(CONFIG_MPEG4_NVMPI_DECODER)     += nvmpi_dec.o
+ OBJS-$(CONFIG_MPEG4_MEDIACODEC_DECODER) += mediacodecdec.o
+ OBJS-$(CONFIG_MPEG4_OMX_ENCODER)       += omx.o
+ OBJS-$(CONFIG_MPEG4_V4L2M2M_DECODER)   += v4l2_m2m_dec.o
+@@ -692,6 +698,7 @@
+ OBJS-$(CONFIG_VP7_DECODER)             += vp8.o vp56rac.o
+ OBJS-$(CONFIG_VP8_DECODER)             += vp8.o vp56rac.o
+ OBJS-$(CONFIG_VP8_CUVID_DECODER)       += cuviddec.o
++OBJS-$(CONFIG_VP8_NVMPI_DECODER)       += nvmpi_dec.o
+ OBJS-$(CONFIG_VP8_MEDIACODEC_DECODER)  += mediacodecdec.o
+ OBJS-$(CONFIG_VP8_QSV_DECODER)         += qsvdec_other.o
+ OBJS-$(CONFIG_VP8_RKMPP_DECODER)       += rkmppdec.o
+@@ -702,6 +709,7 @@
+                                           vp9block.o vp9prob.o vp9mvs.o vp56rac.o \
+                                           vp9dsp_8bpp.o vp9dsp_10bpp.o vp9dsp_12bpp.o
+ OBJS-$(CONFIG_VP9_CUVID_DECODER)       += cuviddec.o
++OBJS-$(CONFIG_VP9_NVMPI_DECODER)       += nvmpi_dec.o
+ OBJS-$(CONFIG_VP9_MEDIACODEC_DECODER)  += mediacodecdec.o
+ OBJS-$(CONFIG_VP9_RKMPP_DECODER)       += rkmppdec.o
+ OBJS-$(CONFIG_VP9_VAAPI_ENCODER)       += vaapi_encode_vp9.o
+diff -ruN ffmpeg-4.3.1-orig/libavcodec/allcodecs.c ffmpeg-4.3.1/libavcodec/allcodecs.c
+--- ffmpeg-4.3.1-orig/libavcodec/allcodecs.c	2021-06-10 14:52:01.721096220 +0300
++++ ffmpeg-4.3.1/libavcodec/allcodecs.c	2021-06-10 15:00:56.684421116 +0300
+@@ -144,11 +144,15 @@
+ extern AVCodec ff_h264_mmal_decoder;
+ extern AVCodec ff_h264_qsv_decoder;
+ extern AVCodec ff_h264_rkmpp_decoder;
++extern AVCodec ff_h264_nvmpi_decoder;
++extern AVCodec ff_h264_nvmpi_encoder;
+ extern AVCodec ff_hap_encoder;
+ extern AVCodec ff_hap_decoder;
+ extern AVCodec ff_hevc_decoder;
+ extern AVCodec ff_hevc_qsv_decoder;
+ extern AVCodec ff_hevc_rkmpp_decoder;
++extern AVCodec ff_hevc_nvmpi_decoder;
++extern AVCodec ff_hevc_nvmpi_encoder;
+ extern AVCodec ff_hevc_v4l2m2m_decoder;
+ extern AVCodec ff_hnm4_video_decoder;
+ extern AVCodec ff_hq_hqa_decoder;
+@@ -791,19 +795,23 @@
+ extern AVCodec ff_mjpeg_vaapi_encoder;
+ extern AVCodec ff_mpeg1_cuvid_decoder;
+ extern AVCodec ff_mpeg2_cuvid_decoder;
++extern AVCodec ff_mpeg2_nvmpi_decoder;
+ extern AVCodec ff_mpeg2_qsv_encoder;
+ extern AVCodec ff_mpeg2_vaapi_encoder;
+ extern AVCodec ff_mpeg4_cuvid_decoder;
++extern AVCodec ff_mpeg4_nvmpi_decoder;
+ extern AVCodec ff_mpeg4_mediacodec_decoder;
+ extern AVCodec ff_mpeg4_omx_encoder;
+ extern AVCodec ff_mpeg4_v4l2m2m_encoder;
+ extern AVCodec ff_vc1_cuvid_decoder;
+ extern AVCodec ff_vp8_cuvid_decoder;
++extern AVCodec ff_vp8_nvmpi_decoder;
+ extern AVCodec ff_vp8_mediacodec_decoder;
+ extern AVCodec ff_vp8_qsv_decoder;
+ extern AVCodec ff_vp8_v4l2m2m_encoder;
+ extern AVCodec ff_vp8_vaapi_encoder;
+ extern AVCodec ff_vp9_cuvid_decoder;
++extern AVCodec ff_vp9_nvmpi_decoder;
+ extern AVCodec ff_vp9_mediacodec_decoder;
+ extern AVCodec ff_vp9_qsv_decoder;
+ extern AVCodec ff_vp9_vaapi_encoder;
+diff -ruN ffmpeg-4.3.1-orig/libavcodec/bsf_list.c ffmpeg-4.3.1/libavcodec/bsf_list.c
+--- ffmpeg-4.3.1-orig/libavcodec/bsf_list.c	1970-01-01 03:00:00.000000000 +0300
++++ ffmpeg-4.3.1/libavcodec/bsf_list.c	2021-06-10 15:07:03.528323606 +0300
+@@ -0,0 +1,38 @@
++static const AVBitStreamFilter * const bitstream_filters[] = {
++    &ff_aac_adtstoasc_bsf,
++    &ff_av1_frame_merge_bsf,
++    &ff_av1_frame_split_bsf,
++    &ff_av1_metadata_bsf,
++    &ff_chomp_bsf,
++    &ff_dump_extradata_bsf,
++    &ff_dca_core_bsf,
++    &ff_eac3_core_bsf,
++    &ff_extract_extradata_bsf,
++    &ff_filter_units_bsf,
++    &ff_h264_metadata_bsf,
++    &ff_h264_mp4toannexb_bsf,
++    &ff_h264_redundant_pps_bsf,
++    &ff_hapqa_extract_bsf,
++    &ff_hevc_metadata_bsf,
++    &ff_hevc_mp4toannexb_bsf,
++    &ff_imx_dump_header_bsf,
++    &ff_mjpeg2jpeg_bsf,
++    &ff_mjpega_dump_header_bsf,
++    &ff_mp3_header_decompress_bsf,
++    &ff_mpeg2_metadata_bsf,
++    &ff_mpeg4_unpack_bframes_bsf,
++    &ff_mov2textsub_bsf,
++    &ff_noise_bsf,
++    &ff_null_bsf,
++    &ff_opus_metadata_bsf,
++    &ff_pcm_rechunk_bsf,
++    &ff_prores_metadata_bsf,
++    &ff_remove_extradata_bsf,
++    &ff_text2movsub_bsf,
++    &ff_trace_headers_bsf,
++    &ff_truehd_core_bsf,
++    &ff_vp9_metadata_bsf,
++    &ff_vp9_raw_reorder_bsf,
++    &ff_vp9_superframe_bsf,
++    &ff_vp9_superframe_split_bsf,
++    NULL };
+diff -ruN ffmpeg-4.3.1-orig/libavcodec/codec_list.c ffmpeg-4.3.1/libavcodec/codec_list.c
+--- ffmpeg-4.3.1-orig/libavcodec/codec_list.c	1970-01-01 03:00:00.000000000 +0300
++++ ffmpeg-4.3.1/libavcodec/codec_list.c	2021-06-10 15:07:03.492322828 +0300
+@@ -0,0 +1,633 @@
++static const AVCodec * const codec_list[] = {
++    &ff_a64multi_encoder,
++    &ff_a64multi5_encoder,
++    &ff_alias_pix_encoder,
++    &ff_amv_encoder,
++    &ff_apng_encoder,
++    &ff_asv1_encoder,
++    &ff_asv2_encoder,
++    &ff_avrp_encoder,
++    &ff_avui_encoder,
++    &ff_ayuv_encoder,
++    &ff_bmp_encoder,
++    &ff_cinepak_encoder,
++    &ff_cljr_encoder,
++    &ff_comfortnoise_encoder,
++    &ff_dnxhd_encoder,
++    &ff_dpx_encoder,
++    &ff_dvvideo_encoder,
++    &ff_ffv1_encoder,
++    &ff_ffvhuff_encoder,
++    &ff_fits_encoder,
++    &ff_flashsv_encoder,
++    &ff_flashsv2_encoder,
++    &ff_flv_encoder,
++    &ff_gif_encoder,
++    &ff_h261_encoder,
++    &ff_h263_encoder,
++    &ff_h263p_encoder,
++    &ff_h264_nvmpi_encoder,
++    &ff_hevc_nvmpi_encoder,
++    &ff_huffyuv_encoder,
++    &ff_jpeg2000_encoder,
++    &ff_jpegls_encoder,
++    &ff_ljpeg_encoder,
++    &ff_magicyuv_encoder,
++    &ff_mjpeg_encoder,
++    &ff_mpeg1video_encoder,
++    &ff_mpeg2video_encoder,
++    &ff_mpeg4_encoder,
++    &ff_msmpeg4v2_encoder,
++    &ff_msmpeg4v3_encoder,
++    &ff_msvideo1_encoder,
++    &ff_pam_encoder,
++    &ff_pbm_encoder,
++    &ff_pcx_encoder,
++    &ff_pgm_encoder,
++    &ff_pgmyuv_encoder,
++    &ff_png_encoder,
++    &ff_ppm_encoder,
++    &ff_prores_encoder,
++    &ff_prores_aw_encoder,
++    &ff_prores_ks_encoder,
++    &ff_qtrle_encoder,
++    &ff_r10k_encoder,
++    &ff_r210_encoder,
++    &ff_rawvideo_encoder,
++    &ff_roq_encoder,
++    &ff_rv10_encoder,
++    &ff_rv20_encoder,
++    &ff_s302m_encoder,
++    &ff_sgi_encoder,
++    &ff_snow_encoder,
++    &ff_sunrast_encoder,
++    &ff_svq1_encoder,
++    &ff_targa_encoder,
++    &ff_tiff_encoder,
++    &ff_utvideo_encoder,
++    &ff_v210_encoder,
++    &ff_v308_encoder,
++    &ff_v408_encoder,
++    &ff_v410_encoder,
++    &ff_vc2_encoder,
++    &ff_wrapped_avframe_encoder,
++    &ff_wmv1_encoder,
++    &ff_wmv2_encoder,
++    &ff_xbm_encoder,
++    &ff_xface_encoder,
++    &ff_xwd_encoder,
++    &ff_y41p_encoder,
++    &ff_yuv4_encoder,
++    &ff_zlib_encoder,
++    &ff_zmbv_encoder,
++    &ff_aac_encoder,
++    &ff_ac3_encoder,
++    &ff_ac3_fixed_encoder,
++    &ff_alac_encoder,
++    &ff_aptx_encoder,
++    &ff_aptx_hd_encoder,
++    &ff_dca_encoder,
++    &ff_eac3_encoder,
++    &ff_flac_encoder,
++    &ff_g723_1_encoder,
++    &ff_mlp_encoder,
++    &ff_mp2_encoder,
++    &ff_mp2fixed_encoder,
++    &ff_nellymoser_encoder,
++    &ff_opus_encoder,
++    &ff_ra_144_encoder,
++    &ff_sbc_encoder,
++    &ff_sonic_encoder,
++    &ff_sonic_ls_encoder,
++    &ff_truehd_encoder,
++    &ff_tta_encoder,
++    &ff_vorbis_encoder,
++    &ff_wavpack_encoder,
++    &ff_wmav1_encoder,
++    &ff_wmav2_encoder,
++    &ff_pcm_alaw_encoder,
++    &ff_pcm_dvd_encoder,
++    &ff_pcm_f32be_encoder,
++    &ff_pcm_f32le_encoder,
++    &ff_pcm_f64be_encoder,
++    &ff_pcm_f64le_encoder,
++    &ff_pcm_mulaw_encoder,
++    &ff_pcm_s8_encoder,
++    &ff_pcm_s8_planar_encoder,
++    &ff_pcm_s16be_encoder,
++    &ff_pcm_s16be_planar_encoder,
++    &ff_pcm_s16le_encoder,
++    &ff_pcm_s16le_planar_encoder,
++    &ff_pcm_s24be_encoder,
++    &ff_pcm_s24daud_encoder,
++    &ff_pcm_s24le_encoder,
++    &ff_pcm_s24le_planar_encoder,
++    &ff_pcm_s32be_encoder,
++    &ff_pcm_s32le_encoder,
++    &ff_pcm_s32le_planar_encoder,
++    &ff_pcm_s64be_encoder,
++    &ff_pcm_s64le_encoder,
++    &ff_pcm_u8_encoder,
++    &ff_pcm_u16be_encoder,
++    &ff_pcm_u16le_encoder,
++    &ff_pcm_u24be_encoder,
++    &ff_pcm_u24le_encoder,
++    &ff_pcm_u32be_encoder,
++    &ff_pcm_u32le_encoder,
++    &ff_pcm_vidc_encoder,
++    &ff_roq_dpcm_encoder,
++    &ff_adpcm_adx_encoder,
++    &ff_adpcm_g722_encoder,
++    &ff_adpcm_g726_encoder,
++    &ff_adpcm_g726le_encoder,
++    &ff_adpcm_ima_qt_encoder,
++    &ff_adpcm_ima_ssi_encoder,
++    &ff_adpcm_ima_wav_encoder,
++    &ff_adpcm_ms_encoder,
++    &ff_adpcm_swf_encoder,
++    &ff_adpcm_yamaha_encoder,
++    &ff_ssa_encoder,
++    &ff_ass_encoder,
++    &ff_dvbsub_encoder,
++    &ff_dvdsub_encoder,
++    &ff_movtext_encoder,
++    &ff_srt_encoder,
++    &ff_subrip_encoder,
++    &ff_text_encoder,
++    &ff_webvtt_encoder,
++    &ff_xsub_encoder,
++    &ff_h263_v4l2m2m_encoder,
++    &ff_h264_v4l2m2m_encoder,
++    &ff_hevc_v4l2m2m_encoder,
++    &ff_mpeg4_v4l2m2m_encoder,
++    &ff_vp8_v4l2m2m_encoder,
++    &ff_aasc_decoder,
++    &ff_aic_decoder,
++    &ff_alias_pix_decoder,
++    &ff_agm_decoder,
++    &ff_amv_decoder,
++    &ff_anm_decoder,
++    &ff_ansi_decoder,
++    &ff_apng_decoder,
++    &ff_arbc_decoder,
++    &ff_asv1_decoder,
++    &ff_asv2_decoder,
++    &ff_aura_decoder,
++    &ff_aura2_decoder,
++    &ff_avrp_decoder,
++    &ff_avrn_decoder,
++    &ff_avs_decoder,
++    &ff_avui_decoder,
++    &ff_ayuv_decoder,
++    &ff_bethsoftvid_decoder,
++    &ff_bfi_decoder,
++    &ff_bink_decoder,
++    &ff_bitpacked_decoder,
++    &ff_bmp_decoder,
++    &ff_bmv_video_decoder,
++    &ff_brender_pix_decoder,
++    &ff_c93_decoder,
++    &ff_cavs_decoder,
++    &ff_cdgraphics_decoder,
++    &ff_cdtoons_decoder,
++    &ff_cdxl_decoder,
++    &ff_cfhd_decoder,
++    &ff_cinepak_decoder,
++    &ff_clearvideo_decoder,
++    &ff_cljr_decoder,
++    &ff_cllc_decoder,
++    &ff_comfortnoise_decoder,
++    &ff_cpia_decoder,
++    &ff_cscd_decoder,
++    &ff_cyuv_decoder,
++    &ff_dds_decoder,
++    &ff_dfa_decoder,
++    &ff_dirac_decoder,
++    &ff_dnxhd_decoder,
++    &ff_dpx_decoder,
++    &ff_dsicinvideo_decoder,
++    &ff_dvaudio_decoder,
++    &ff_dvvideo_decoder,
++    &ff_dxa_decoder,
++    &ff_dxtory_decoder,
++    &ff_dxv_decoder,
++    &ff_eacmv_decoder,
++    &ff_eamad_decoder,
++    &ff_eatgq_decoder,
++    &ff_eatgv_decoder,
++    &ff_eatqi_decoder,
++    &ff_eightbps_decoder,
++    &ff_eightsvx_exp_decoder,
++    &ff_eightsvx_fib_decoder,
++    &ff_escape124_decoder,
++    &ff_escape130_decoder,
++    &ff_exr_decoder,
++    &ff_ffv1_decoder,
++    &ff_ffvhuff_decoder,
++    &ff_fic_decoder,
++    &ff_fits_decoder,
++    &ff_flashsv_decoder,
++    &ff_flashsv2_decoder,
++    &ff_flic_decoder,
++    &ff_flv_decoder,
++    &ff_fmvc_decoder,
++    &ff_fourxm_decoder,
++    &ff_fraps_decoder,
++    &ff_frwu_decoder,
++    &ff_g2m_decoder,
++    &ff_gdv_decoder,
++    &ff_gif_decoder,
++    &ff_h261_decoder,
++    &ff_h263_decoder,
++    &ff_h263i_decoder,
++    &ff_h263p_decoder,
++    &ff_h263_v4l2m2m_decoder,
++    &ff_h264_decoder,
++    &ff_h264_v4l2m2m_decoder,
++    &ff_h264_nvmpi_decoder,
++    &ff_hap_decoder,
++    &ff_hevc_decoder,
++    &ff_hevc_nvmpi_decoder,
++    &ff_hevc_v4l2m2m_decoder,
++    &ff_hnm4_video_decoder,
++    &ff_hq_hqa_decoder,
++    &ff_hqx_decoder,
++    &ff_huffyuv_decoder,
++    &ff_hymt_decoder,
++    &ff_idcin_decoder,
++    &ff_iff_ilbm_decoder,
++    &ff_imm4_decoder,
++    &ff_imm5_decoder,
++    &ff_indeo2_decoder,
++    &ff_indeo3_decoder,
++    &ff_indeo4_decoder,
++    &ff_indeo5_decoder,
++    &ff_interplay_video_decoder,
++    &ff_jpeg2000_decoder,
++    &ff_jpegls_decoder,
++    &ff_jv_decoder,
++    &ff_kgv1_decoder,
++    &ff_kmvc_decoder,
++    &ff_lagarith_decoder,
++    &ff_loco_decoder,
++    &ff_lscr_decoder,
++    &ff_m101_decoder,
++    &ff_magicyuv_decoder,
++    &ff_mdec_decoder,
++    &ff_mimic_decoder,
++    &ff_mjpeg_decoder,
++    &ff_mjpegb_decoder,
++    &ff_mmvideo_decoder,
++    &ff_motionpixels_decoder,
++    &ff_mpeg1video_decoder,
++    &ff_mpeg2video_decoder,
++    &ff_mpeg4_decoder,
++    &ff_mpeg4_v4l2m2m_decoder,
++    &ff_mpegvideo_decoder,
++    &ff_mpeg1_v4l2m2m_decoder,
++    &ff_mpeg2_v4l2m2m_decoder,
++    &ff_msa1_decoder,
++    &ff_mscc_decoder,
++    &ff_msmpeg4v1_decoder,
++    &ff_msmpeg4v2_decoder,
++    &ff_msmpeg4v3_decoder,
++    &ff_msrle_decoder,
++    &ff_mss1_decoder,
++    &ff_mss2_decoder,
++    &ff_msvideo1_decoder,
++    &ff_mszh_decoder,
++    &ff_mts2_decoder,
++    &ff_mv30_decoder,
++    &ff_mvc1_decoder,
++    &ff_mvc2_decoder,
++    &ff_mvdv_decoder,
++    &ff_mvha_decoder,
++    &ff_mwsc_decoder,
++    &ff_mxpeg_decoder,
++    &ff_notchlc_decoder,
++    &ff_nuv_decoder,
++    &ff_paf_video_decoder,
++    &ff_pam_decoder,
++    &ff_pbm_decoder,
++    &ff_pcx_decoder,
++    &ff_pfm_decoder,
++    &ff_pgm_decoder,
++    &ff_pgmyuv_decoder,
++    &ff_pictor_decoder,
++    &ff_pixlet_decoder,
++    &ff_png_decoder,
++    &ff_ppm_decoder,
++    &ff_prores_decoder,
++    &ff_prosumer_decoder,
++    &ff_psd_decoder,
++    &ff_ptx_decoder,
++    &ff_qdraw_decoder,
++    &ff_qpeg_decoder,
++    &ff_qtrle_decoder,
++    &ff_r10k_decoder,
++    &ff_r210_decoder,
++    &ff_rasc_decoder,
++    &ff_rawvideo_decoder,
++    &ff_rl2_decoder,
++    &ff_roq_decoder,
++    &ff_rpza_decoder,
++    &ff_rscc_decoder,
++    &ff_rv10_decoder,
++    &ff_rv20_decoder,
++    &ff_rv30_decoder,
++    &ff_rv40_decoder,
++    &ff_s302m_decoder,
++    &ff_sanm_decoder,
++    &ff_scpr_decoder,
++    &ff_screenpresso_decoder,
++    &ff_sgi_decoder,
++    &ff_sgirle_decoder,
++    &ff_sheervideo_decoder,
++    &ff_smacker_decoder,
++    &ff_smc_decoder,
++    &ff_smvjpeg_decoder,
++    &ff_snow_decoder,
++    &ff_sp5x_decoder,
++    &ff_speedhq_decoder,
++    &ff_srgc_decoder,
++    &ff_sunrast_decoder,
++    &ff_svq1_decoder,
++    &ff_svq3_decoder,
++    &ff_targa_decoder,
++    &ff_targa_y216_decoder,
++    &ff_tdsc_decoder,
++    &ff_theora_decoder,
++    &ff_thp_decoder,
++    &ff_tiertexseqvideo_decoder,
++    &ff_tiff_decoder,
++    &ff_tmv_decoder,
++    &ff_truemotion1_decoder,
++    &ff_truemotion2_decoder,
++    &ff_truemotion2rt_decoder,
++    &ff_tscc_decoder,
++    &ff_tscc2_decoder,
++    &ff_txd_decoder,
++    &ff_ulti_decoder,
++    &ff_utvideo_decoder,
++    &ff_v210_decoder,
++    &ff_v210x_decoder,
++    &ff_v308_decoder,
++    &ff_v408_decoder,
++    &ff_v410_decoder,
++    &ff_vb_decoder,
++    &ff_vble_decoder,
++    &ff_vc1_decoder,
++    &ff_vc1image_decoder,
++    &ff_vc1_v4l2m2m_decoder,
++    &ff_vcr1_decoder,
++    &ff_vmdvideo_decoder,
++    &ff_vmnc_decoder,
++    &ff_vp3_decoder,
++    &ff_vp4_decoder,
++    &ff_vp5_decoder,
++    &ff_vp6_decoder,
++    &ff_vp6a_decoder,
++    &ff_vp6f_decoder,
++    &ff_vp7_decoder,
++    &ff_vp8_decoder,
++    &ff_vp8_v4l2m2m_decoder,
++    &ff_vp9_decoder,
++    &ff_vp9_v4l2m2m_decoder,
++    &ff_vqa_decoder,
++    &ff_webp_decoder,
++    &ff_wcmv_decoder,
++    &ff_wrapped_avframe_decoder,
++    &ff_wmv1_decoder,
++    &ff_wmv2_decoder,
++    &ff_wmv3_decoder,
++    &ff_wmv3image_decoder,
++    &ff_wnv1_decoder,
++    &ff_xan_wc3_decoder,
++    &ff_xan_wc4_decoder,
++    &ff_xbm_decoder,
++    &ff_xface_decoder,
++    &ff_xl_decoder,
++    &ff_xpm_decoder,
++    &ff_xwd_decoder,
++    &ff_y41p_decoder,
++    &ff_ylc_decoder,
++    &ff_yop_decoder,
++    &ff_yuv4_decoder,
++    &ff_zero12v_decoder,
++    &ff_zerocodec_decoder,
++    &ff_zlib_decoder,
++    &ff_zmbv_decoder,
++    &ff_aac_decoder,
++    &ff_aac_fixed_decoder,
++    &ff_aac_latm_decoder,
++    &ff_ac3_decoder,
++    &ff_ac3_fixed_decoder,
++    &ff_acelp_kelvin_decoder,
++    &ff_alac_decoder,
++    &ff_als_decoder,
++    &ff_amrnb_decoder,
++    &ff_amrwb_decoder,
++    &ff_ape_decoder,
++    &ff_aptx_decoder,
++    &ff_aptx_hd_decoder,
++    &ff_atrac1_decoder,
++    &ff_atrac3_decoder,
++    &ff_atrac3al_decoder,
++    &ff_atrac3p_decoder,
++    &ff_atrac3pal_decoder,
++    &ff_atrac9_decoder,
++    &ff_binkaudio_dct_decoder,
++    &ff_binkaudio_rdft_decoder,
++    &ff_bmv_audio_decoder,
++    &ff_cook_decoder,
++    &ff_dca_decoder,
++    &ff_dolby_e_decoder,
++    &ff_dsd_lsbf_decoder,
++    &ff_dsd_msbf_decoder,
++    &ff_dsd_lsbf_planar_decoder,
++    &ff_dsd_msbf_planar_decoder,
++    &ff_dsicinaudio_decoder,
++    &ff_dss_sp_decoder,
++    &ff_dst_decoder,
++    &ff_eac3_decoder,
++    &ff_evrc_decoder,
++    &ff_ffwavesynth_decoder,
++    &ff_flac_decoder,
++    &ff_g723_1_decoder,
++    &ff_g729_decoder,
++    &ff_gsm_decoder,
++    &ff_gsm_ms_decoder,
++    &ff_hca_decoder,
++    &ff_hcom_decoder,
++    &ff_iac_decoder,
++    &ff_ilbc_decoder,
++    &ff_imc_decoder,
++    &ff_interplay_acm_decoder,
++    &ff_mace3_decoder,
++    &ff_mace6_decoder,
++    &ff_metasound_decoder,
++    &ff_mlp_decoder,
++    &ff_mp1_decoder,
++    &ff_mp1float_decoder,
++    &ff_mp2_decoder,
++    &ff_mp2float_decoder,
++    &ff_mp3float_decoder,
++    &ff_mp3_decoder,
++    &ff_mp3adufloat_decoder,
++    &ff_mp3adu_decoder,
++    &ff_mp3on4float_decoder,
++    &ff_mp3on4_decoder,
++    &ff_mpc7_decoder,
++    &ff_mpc8_decoder,
++    &ff_nellymoser_decoder,
++    &ff_on2avc_decoder,
++    &ff_opus_decoder,
++    &ff_paf_audio_decoder,
++    &ff_qcelp_decoder,
++    &ff_qdm2_decoder,
++    &ff_qdmc_decoder,
++    &ff_ra_144_decoder,
++    &ff_ra_288_decoder,
++    &ff_ralf_decoder,
++    &ff_sbc_decoder,
++    &ff_shorten_decoder,
++    &ff_sipr_decoder,
++    &ff_siren_decoder,
++    &ff_smackaud_decoder,
++    &ff_sonic_decoder,
++    &ff_tak_decoder,
++    &ff_truehd_decoder,
++    &ff_truespeech_decoder,
++    &ff_tta_decoder,
++    &ff_twinvq_decoder,
++    &ff_vmdaudio_decoder,
++    &ff_vorbis_decoder,
++    &ff_wavpack_decoder,
++    &ff_wmalossless_decoder,
++    &ff_wmapro_decoder,
++    &ff_wmav1_decoder,
++    &ff_wmav2_decoder,
++    &ff_wmavoice_decoder,
++    &ff_ws_snd1_decoder,
++    &ff_xma1_decoder,
++    &ff_xma2_decoder,
++    &ff_pcm_alaw_decoder,
++    &ff_pcm_bluray_decoder,
++    &ff_pcm_dvd_decoder,
++    &ff_pcm_f16le_decoder,
++    &ff_pcm_f24le_decoder,
++    &ff_pcm_f32be_decoder,
++    &ff_pcm_f32le_decoder,
++    &ff_pcm_f64be_decoder,
++    &ff_pcm_f64le_decoder,
++    &ff_pcm_lxf_decoder,
++    &ff_pcm_mulaw_decoder,
++    &ff_pcm_s8_decoder,
++    &ff_pcm_s8_planar_decoder,
++    &ff_pcm_s16be_decoder,
++    &ff_pcm_s16be_planar_decoder,
++    &ff_pcm_s16le_decoder,
++    &ff_pcm_s16le_planar_decoder,
++    &ff_pcm_s24be_decoder,
++    &ff_pcm_s24daud_decoder,
++    &ff_pcm_s24le_decoder,
++    &ff_pcm_s24le_planar_decoder,
++    &ff_pcm_s32be_decoder,
++    &ff_pcm_s32le_decoder,
++    &ff_pcm_s32le_planar_decoder,
++    &ff_pcm_s64be_decoder,
++    &ff_pcm_s64le_decoder,
++    &ff_pcm_u8_decoder,
++    &ff_pcm_u16be_decoder,
++    &ff_pcm_u16le_decoder,
++    &ff_pcm_u24be_decoder,
++    &ff_pcm_u24le_decoder,
++    &ff_pcm_u32be_decoder,
++    &ff_pcm_u32le_decoder,
++    &ff_pcm_vidc_decoder,
++    &ff_derf_dpcm_decoder,
++    &ff_gremlin_dpcm_decoder,
++    &ff_interplay_dpcm_decoder,
++    &ff_roq_dpcm_decoder,
++    &ff_sdx2_dpcm_decoder,
++    &ff_sol_dpcm_decoder,
++    &ff_xan_dpcm_decoder,
++    &ff_adpcm_4xm_decoder,
++    &ff_adpcm_adx_decoder,
++    &ff_adpcm_afc_decoder,
++    &ff_adpcm_agm_decoder,
++    &ff_adpcm_aica_decoder,
++    &ff_adpcm_argo_decoder,
++    &ff_adpcm_ct_decoder,
++    &ff_adpcm_dtk_decoder,
++    &ff_adpcm_ea_decoder,
++    &ff_adpcm_ea_maxis_xa_decoder,
++    &ff_adpcm_ea_r1_decoder,
++    &ff_adpcm_ea_r2_decoder,
++    &ff_adpcm_ea_r3_decoder,
++    &ff_adpcm_ea_xas_decoder,
++    &ff_adpcm_g722_decoder,
++    &ff_adpcm_g726_decoder,
++    &ff_adpcm_g726le_decoder,
++    &ff_adpcm_ima_amv_decoder,
++    &ff_adpcm_ima_alp_decoder,
++    &ff_adpcm_ima_apc_decoder,
++    &ff_adpcm_ima_apm_decoder,
++    &ff_adpcm_ima_cunning_decoder,
++    &ff_adpcm_ima_dat4_decoder,
++    &ff_adpcm_ima_dk3_decoder,
++    &ff_adpcm_ima_dk4_decoder,
++    &ff_adpcm_ima_ea_eacs_decoder,
++    &ff_adpcm_ima_ea_sead_decoder,
++    &ff_adpcm_ima_iss_decoder,
++    &ff_adpcm_ima_mtf_decoder,
++    &ff_adpcm_ima_oki_decoder,
++    &ff_adpcm_ima_qt_decoder,
++    &ff_adpcm_ima_rad_decoder,
++    &ff_adpcm_ima_ssi_decoder,
++    &ff_adpcm_ima_smjpeg_decoder,
++    &ff_adpcm_ima_wav_decoder,
++    &ff_adpcm_ima_ws_decoder,
++    &ff_adpcm_ms_decoder,
++    &ff_adpcm_mtaf_decoder,
++    &ff_adpcm_psx_decoder,
++    &ff_adpcm_sbpro_2_decoder,
++    &ff_adpcm_sbpro_3_decoder,
++    &ff_adpcm_sbpro_4_decoder,
++    &ff_adpcm_swf_decoder,
++    &ff_adpcm_thp_decoder,
++    &ff_adpcm_thp_le_decoder,
++    &ff_adpcm_vima_decoder,
++    &ff_adpcm_xa_decoder,
++    &ff_adpcm_yamaha_decoder,
++    &ff_adpcm_zork_decoder,
++    &ff_ssa_decoder,
++    &ff_ass_decoder,
++    &ff_ccaption_decoder,
++    &ff_dvbsub_decoder,
++    &ff_dvdsub_decoder,
++    &ff_jacosub_decoder,
++    &ff_microdvd_decoder,
++    &ff_movtext_decoder,
++    &ff_mpl2_decoder,
++    &ff_pgssub_decoder,
++    &ff_pjs_decoder,
++    &ff_realtext_decoder,
++    &ff_sami_decoder,
++    &ff_srt_decoder,
++    &ff_stl_decoder,
++    &ff_subrip_decoder,
++    &ff_subviewer_decoder,
++    &ff_subviewer1_decoder,
++    &ff_text_decoder,
++    &ff_vplayer_decoder,
++    &ff_webvtt_decoder,
++    &ff_xsub_decoder,
++    &ff_bintext_decoder,
++    &ff_xbin_decoder,
++    &ff_idf_decoder,
++    &ff_mpeg2_nvmpi_decoder,
++    &ff_mpeg4_nvmpi_decoder,
++    &ff_vp8_nvmpi_decoder,
++    &ff_vp9_nvmpi_decoder,
++    NULL };
+diff -ruN ffmpeg-4.3.1-orig/libavcodec/nvmpi_dec.c ffmpeg-4.3.1/libavcodec/nvmpi_dec.c
+--- ffmpeg-4.3.1-orig/libavcodec/nvmpi_dec.c	1970-01-01 03:00:00.000000000 +0300
++++ ffmpeg-4.3.1/libavcodec/nvmpi_dec.c	2021-06-10 15:04:09.672570281 +0300
+@@ -0,0 +1,170 @@
++#include <stdio.h>
++#include <stdlib.h>
++#include <sys/time.h>
++
++#include <nvmpi.h>
++#include "avcodec.h"
++#include "decode.h"
++#include "internal.h"
++#include "libavutil/buffer.h"
++#include "libavutil/common.h"
++#include "libavutil/frame.h"
++#include "libavutil/hwcontext.h"
++#include "libavutil/hwcontext_drm.h"
++#include "libavutil/imgutils.h"
++#include "libavutil/log.h"
++
++
++
++
++typedef struct {
++	char eos_reached;
++	nvmpictx* ctx;
++	AVClass *av_class;
++} nvmpiDecodeContext;
++
++static nvCodingType nvmpi_get_codingtype(AVCodecContext *avctx)
++{
++	switch (avctx->codec_id) {
++		case AV_CODEC_ID_H264:          return NV_VIDEO_CodingH264;
++		case AV_CODEC_ID_HEVC:          return NV_VIDEO_CodingHEVC;
++		case AV_CODEC_ID_VP8:           return NV_VIDEO_CodingVP8;
++		case AV_CODEC_ID_VP9:           return NV_VIDEO_CodingVP9;
++		case AV_CODEC_ID_MPEG4:		return NV_VIDEO_CodingMPEG4;
++		case AV_CODEC_ID_MPEG2VIDEO:    return NV_VIDEO_CodingMPEG2;
++		default:                        return NV_VIDEO_CodingUnused;
++	}
++};
++
++
++static int nvmpi_init_decoder(AVCodecContext *avctx){
++
++	nvmpiDecodeContext *nvmpi_context = avctx->priv_data;
++	nvCodingType codectype=NV_VIDEO_CodingUnused;
++
++	codectype =nvmpi_get_codingtype(avctx);
++	if (codectype == NV_VIDEO_CodingUnused) {
++		av_log(avctx, AV_LOG_ERROR, "Unknown codec type (%d).\n", avctx->codec_id);
++		return AVERROR_UNKNOWN;
++	}
++
++	//Workaround for default pix_fmt not being set, so check if it isnt set and set it,
++   //or if it is set, but isnt set to something we can work with.
++
++	if(avctx->pix_fmt ==AV_PIX_FMT_NONE){
++		 avctx->pix_fmt=AV_PIX_FMT_YUV420P;
++	}else if(avctx-> pix_fmt != AV_PIX_FMT_YUV420P){
++		av_log(avctx, AV_LOG_ERROR, "Invalid Pix_FMT for NVMPI Only yuv420p is supported\n");
++		return AVERROR_INVALIDDATA;
++	}
++
++	nvmpi_context->ctx=nvmpi_create_decoder(codectype,NV_PIX_YUV420);
++
++	if(!nvmpi_context->ctx){
++		av_log(avctx, AV_LOG_ERROR, "Failed to nvmpi_create_decoder (code = %d).\n", AVERROR_EXTERNAL);
++		return AVERROR_EXTERNAL;
++	}
++   return 0;
++
++}
++
++
++
++static int nvmpi_close(AVCodecContext *avctx){
++
++	nvmpiDecodeContext *nvmpi_context = avctx->priv_data;
++	return nvmpi_decoder_close(nvmpi_context->ctx);
++
++}
++
++
++
++static int nvmpi_decode(AVCodecContext *avctx,void *data,int *got_frame, AVPacket *avpkt){
++
++	nvmpiDecodeContext *nvmpi_context = avctx->priv_data;
++	AVFrame *frame = data;
++	nvFrame _nvframe={0};
++	nvPacket packet;
++	uint8_t* ptrs[3];
++	int res,linesize[3];
++
++	if(avpkt->size){
++		packet.payload_size=avpkt->size;
++		packet.payload=avpkt->data;
++		packet.pts=avpkt->pts;
++
++		res=nvmpi_decoder_put_packet(nvmpi_context->ctx,&packet);
++	}
++
++	res=nvmpi_decoder_get_frame(nvmpi_context->ctx,&_nvframe,avctx->flags & AV_CODEC_FLAG_LOW_DELAY);
++
++	if(res<0)
++		return avpkt->size;
++
++	if (ff_get_buffer(avctx, frame, 0) < 0) {
++		return AVERROR(ENOMEM);
++
++	}
++
++	linesize[0]=_nvframe.linesize[0];
++	linesize[1]=_nvframe.linesize[1];
++	linesize[2]=_nvframe.linesize[2];
++
++	ptrs[0]=_nvframe.payload[0];
++	ptrs[1]=_nvframe.payload[1];
++	ptrs[2]=_nvframe.payload[2];
++
++	av_image_copy(frame->data, frame->linesize, (const uint8_t **) ptrs, linesize, avctx->pix_fmt, _nvframe.width,_nvframe.height);
++
++	frame->width=_nvframe.width;
++	frame->height=_nvframe.height;
++
++	frame->format=AV_PIX_FMT_YUV420P;
++	frame->pts=_nvframe.timestamp;
++	frame->pkt_dts = AV_NOPTS_VALUE;
++
++	avctx->coded_width=_nvframe.width;
++	avctx->coded_height=_nvframe.height;
++	avctx->width=_nvframe.width;
++	avctx->height=_nvframe.height;
++
++	*got_frame = 1;
++
++	return avpkt->size;
++}
++
++
++
++
++#define NVMPI_DEC_CLASS(NAME) \
++	static const AVClass nvmpi_##NAME##_dec_class = { \
++		.class_name = "nvmpi_" #NAME "_dec", \
++		.version    = LIBAVUTIL_VERSION_INT, \
++	};
++
++#define NVMPI_DEC(NAME, ID, BSFS) \
++	NVMPI_DEC_CLASS(NAME) \
++	AVCodec ff_##NAME##_nvmpi_decoder = { \
++		.name           = #NAME "_nvmpi", \
++		.long_name      = NULL_IF_CONFIG_SMALL(#NAME " (nvmpi)"), \
++		.type           = AVMEDIA_TYPE_VIDEO, \
++		.id             = ID, \
++		.priv_data_size = sizeof(nvmpiDecodeContext), \
++		.init           = nvmpi_init_decoder, \
++		.close          = nvmpi_close, \
++		.decode         = nvmpi_decode, \
++		.priv_class     = &nvmpi_##NAME##_dec_class, \
++		.capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_AVOID_PROBING | AV_CODEC_CAP_HARDWARE, \
++		.pix_fmts	=(const enum AVPixelFormat[]){AV_PIX_FMT_YUV420P,AV_PIX_FMT_NV12,AV_PIX_FMT_NONE},\
++		.bsfs           = BSFS, \
++		.wrapper_name   = "nvmpi", \
++	};
++
++
++
++NVMPI_DEC(h264,  AV_CODEC_ID_H264,"h264_mp4toannexb");
++NVMPI_DEC(hevc,  AV_CODEC_ID_HEVC,"hevc_mp4toannexb");
++NVMPI_DEC(mpeg2, AV_CODEC_ID_MPEG2VIDEO,NULL);
++NVMPI_DEC(mpeg4, AV_CODEC_ID_MPEG4,NULL);
++NVMPI_DEC(vp9,  AV_CODEC_ID_VP9,NULL);
++NVMPI_DEC(vp8, AV_CODEC_ID_VP8,NULL);
+diff -ruN ffmpeg-4.3.1-orig/libavcodec/nvmpi_enc.c ffmpeg-4.3.1/libavcodec/nvmpi_enc.c
+--- ffmpeg-4.3.1-orig/libavcodec/nvmpi_enc.c	1970-01-01 03:00:00.000000000 +0300
++++ ffmpeg-4.3.1/libavcodec/nvmpi_enc.c	2021-06-10 15:06:17.387326328 +0300
+@@ -0,0 +1,272 @@
++#include <nvmpi.h>
++#include "avcodec.h"
++#include "internal.h"
++#include <stdio.h>
++#include "libavutil/avstring.h"
++#include "libavutil/avutil.h"
++#include "libavutil/common.h"
++#include "libavutil/imgutils.h"
++#include "libavutil/log.h"
++#include "libavutil/opt.h"
++
++
++typedef struct {
++	const AVClass *class;
++	nvmpictx* ctx;
++	int num_capture_buffers;
++	int profile;
++	int level;
++	int rc;
++	int preset;
++}nvmpiEncodeContext;
++
++static av_cold int nvmpi_encode_init(AVCodecContext *avctx){
++
++	nvmpiEncodeContext * nvmpi_context = avctx->priv_data;
++
++	nvEncParam param={0};
++
++	param.width=avctx->width;
++	param.height=avctx->height;
++	param.bitrate=avctx->bit_rate;
++	param.mode_vbr=0;
++	param.idr_interval=60;
++	param.iframe_interval=30;
++	param.peak_bitrate=0;
++	param.fps_n=avctx->framerate.num;
++	param.fps_d=avctx->framerate.den;
++	param.profile=nvmpi_context->profile& ~FF_PROFILE_H264_INTRA;
++	param.level=nvmpi_context->level;
++	param.capture_num=nvmpi_context->num_capture_buffers;
++	param.hw_preset_type=nvmpi_context->preset;
++	param.insert_spspps_idr=(avctx->flags & AV_CODEC_FLAG_GLOBAL_HEADER)?0:1;
++
++	if(nvmpi_context->rc==1){
++		param.mode_vbr=1;
++	}
++
++	if(avctx->qmin >= 0 && avctx->qmax >= 0){
++		param.qmin=avctx->qmin;
++		param.qmax=avctx->qmax;
++	}
++
++	if (avctx->refs >= 0){
++		param.refs=avctx->refs;
++
++	}
++
++	if(avctx->max_b_frames > 0 && avctx->max_b_frames < 3){
++		param.max_b_frames=avctx->max_b_frames;
++	}
++
++	if(avctx->gop_size>0){
++		param.idr_interval=param.iframe_interval=avctx->gop_size;
++
++	}
++
++
++	if ((avctx->flags & AV_CODEC_FLAG_GLOBAL_HEADER) && (avctx->codec->id == AV_CODEC_ID_H264)){
++
++		uint8_t *dst[4];
++		int linesize[4];
++		nvFrame _nvframe={0};
++		nvPacket packet={0};
++		int i;
++		int ret;
++		nvmpictx* _ctx;
++		av_image_alloc(dst, linesize,avctx->width,avctx->height,avctx->pix_fmt,1);
++
++		_ctx=nvmpi_create_encoder(NV_VIDEO_CodingH264,&param);
++		i=0;
++
++		while(1){
++
++			_nvframe.payload[0]=dst[0];
++			_nvframe.payload[1]=dst[1];
++			_nvframe.payload[2]=dst[2];
++			_nvframe.payload_size[0]=linesize[0]*avctx->height;
++			_nvframe.payload_size[1]=linesize[1]*avctx->height/2;
++			_nvframe.payload_size[2]=linesize[2]*avctx->height/2;
++
++			nvmpi_encoder_put_frame(_ctx,&_nvframe);
++
++			ret=nvmpi_encoder_get_packet(_ctx,&packet);
++
++			if(ret<0)
++				continue;
++
++			//find idr index 0x0000000165
++			while((packet.payload[i]!=0||packet.payload[i+1]!=0||packet.payload[i+2]!=0||packet.payload[i+3]!=0x01||packet.payload[i+4]!=0x65)){
++				i++;
++
++			}
++
++			avctx->extradata_size=i;
++			avctx->extradata	= av_mallocz( avctx->extradata_size + AV_INPUT_BUFFER_PADDING_SIZE );
++			memcpy( avctx->extradata, packet.payload,avctx->extradata_size);
++			memset( avctx->extradata + avctx->extradata_size, 0, AV_INPUT_BUFFER_PADDING_SIZE );
++
++			break;
++
++		}
++
++		nvmpi_encoder_close(_ctx);
++
++
++	}
++
++	if(avctx->codec->id == AV_CODEC_ID_H264)
++		nvmpi_context->ctx=nvmpi_create_encoder(NV_VIDEO_CodingH264,&param);
++	else if(avctx->codec->id == AV_CODEC_ID_HEVC){
++		nvmpi_context->ctx=nvmpi_create_encoder(NV_VIDEO_CodingHEVC,&param);
++	}
++
++
++	return 0;
++}
++
++
++static int nvmpi_encode_frame(AVCodecContext *avctx, AVPacket *pkt,const AVFrame *frame, int *got_packet){
++
++	nvmpiEncodeContext * nvmpi_context = avctx->priv_data;
++	nvFrame _nvframe={0};
++	nvPacket packet={0};
++	int res;
++
++	if(frame){
++
++		_nvframe.payload[0]=frame->data[0];
++		_nvframe.payload[1]=frame->data[1];
++		_nvframe.payload[2]=frame->data[2];
++
++		_nvframe.payload_size[0]=frame->linesize[0]*frame->height;
++		_nvframe.payload_size[1]=frame->linesize[1]*frame->height/2;
++		_nvframe.payload_size[2]=frame->linesize[2]*frame->height/2;
++
++		_nvframe.linesize[0]=frame->linesize[0];
++		_nvframe.linesize[1]=frame->linesize[1];
++		_nvframe.linesize[2]=frame->linesize[2];
++
++		_nvframe.timestamp=frame->pts;
++
++		res=nvmpi_encoder_put_frame(nvmpi_context->ctx,&_nvframe);
++
++		if(res<0)
++			return res;
++	}
++
++
++	if(nvmpi_encoder_get_packet(nvmpi_context->ctx,&packet)<0)
++		return 0;
++
++
++	ff_alloc_packet2(avctx,pkt,packet.payload_size,packet.payload_size);
++
++	memcpy(pkt->data,packet.payload,packet.payload_size);
++	pkt->dts=pkt->pts=packet.pts;
++
++	if(packet.flags& AV_PKT_FLAG_KEY)
++		pkt->flags = AV_PKT_FLAG_KEY;
++
++
++	*got_packet = 1;
++
++	return 0;
++}
++
++static av_cold int nvmpi_encode_close(AVCodecContext *avctx){
++
++	nvmpiEncodeContext *nvmpi_context = avctx->priv_data;
++	nvmpi_encoder_close(nvmpi_context->ctx);
++
++	return 0;
++}
++
++static const AVCodecDefault defaults[] = {
++	{ "b", "2M" },
++	{ "qmin", "-1" },
++	{ "qmax", "-1" },
++	{ "qdiff", "-1" },
++	{ "qblur", "-1" },
++	{ "qcomp", "-1" },
++	{ "g", "50" },
++	{ "bf", "0" },
++	{ "refs", "0" },
++	{ NULL },
++};
++
++
++#define OFFSET(x) offsetof(nvmpiEncodeContext, x)
++#define VE AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_ENCODING_PARAM
++
++static const AVOption options[] = {
++	{ "num_capture_buffers", "Number of buffers in the capture context", OFFSET(num_capture_buffers), AV_OPT_TYPE_INT, {.i64 = 10 }, 1, 32, AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_ENCODING_PARAM },
++	/// Profile,
++
++	{ "profile",  "Set the encoding profile", OFFSET(profile), AV_OPT_TYPE_INT,   { .i64 = FF_PROFILE_UNKNOWN },       FF_PROFILE_UNKNOWN, FF_PROFILE_H264_HIGH, VE, "profile" },
++	{ "baseline", "",                         0,               AV_OPT_TYPE_CONST, { .i64 = FF_PROFILE_H264_BASELINE }, 0, 0, VE, "profile" },
++	{ "main",     "",                         0,               AV_OPT_TYPE_CONST, { .i64 = FF_PROFILE_H264_MAIN },     0, 0, VE, "profile" },
++	{ "high",     "",                         0,               AV_OPT_TYPE_CONST, { .i64 = FF_PROFILE_H264_HIGH },     0, 0, VE, "profile" },
++
++	/// Profile Level
++	{ "level",          "Profile Level",        OFFSET(level),  AV_OPT_TYPE_INT,   { .i64 = 0  }, 0, 62, VE, "level" },
++	{ "auto",           "",                     0,              AV_OPT_TYPE_CONST, { .i64 = 0  }, 0, 0,  VE, "level" },
++	{ "1.0",            "",                     0,              AV_OPT_TYPE_CONST, { .i64 = 10 }, 0, 0,  VE, "level" },
++	{ "1.1",            "",                     0,              AV_OPT_TYPE_CONST, { .i64 = 11 }, 0, 0,  VE, "level" },
++	{ "1.2",            "",                     0,              AV_OPT_TYPE_CONST, { .i64 = 12 }, 0, 0,  VE, "level" },
++	{ "1.3",            "",                     0,              AV_OPT_TYPE_CONST, { .i64 = 13 }, 0, 0,  VE, "level" },
++	{ "2.0",            "",                     0,              AV_OPT_TYPE_CONST, { .i64 = 20 }, 0, 0,  VE, "level" },
++	{ "2.1",            "",                     0,              AV_OPT_TYPE_CONST, { .i64 = 21 }, 0, 0,  VE, "level" },
++	{ "2.2",            "",                     0,              AV_OPT_TYPE_CONST, { .i64 = 22 }, 0, 0,  VE, "level" },
++	{ "3.0",            "",                     0,              AV_OPT_TYPE_CONST, { .i64 = 30 }, 0, 0,  VE, "level" },
++	{ "3.1",            "",                     0,              AV_OPT_TYPE_CONST, { .i64 = 31 }, 0, 0,  VE, "level" },
++	{ "3.2",            "",                     0,              AV_OPT_TYPE_CONST, { .i64 = 32 }, 0, 0,  VE, "level" },
++	{ "4.0",            "",                     0,              AV_OPT_TYPE_CONST, { .i64 = 40 }, 0, 0,  VE, "level" },
++	{ "4.1",            "",                     0,              AV_OPT_TYPE_CONST, { .i64 = 41 }, 0, 0,  VE, "level" },
++	{ "4.2",            "",                     0,              AV_OPT_TYPE_CONST, { .i64 = 42 }, 0, 0,  VE, "level" },
++	{ "5.0",            "",                     0,              AV_OPT_TYPE_CONST, { .i64 = 50 }, 0, 0,  VE, "level" },
++	{ "5.1",            "",                     0,              AV_OPT_TYPE_CONST, { .i64 = 51 }, 0, 0,  VE, "level" },
++
++	{ "rc",           "Override the preset rate-control",   OFFSET(rc),           AV_OPT_TYPE_INT,   { .i64 = -1 },                                  -1, INT_MAX, VE, "rc" },
++	{ "cbr",          "Constant bitrate mode",              0,                    AV_OPT_TYPE_CONST, { .i64 = 0 },                       0, 0, VE, "rc" },
++	{ "vbr",          "Variable bitrate mode",              0,                    AV_OPT_TYPE_CONST, { .i64 = 1 },                       0, 0, VE, "rc" },
++
++	{ "preset",          "Set the encoding preset",            OFFSET(preset),       AV_OPT_TYPE_INT,   { .i64 = 3 }, 1, 4, VE, "preset" },
++	{ "default",         "",                                   0,                    AV_OPT_TYPE_CONST, { .i64 = 3 }, 0, 0, VE, "preset" },
++	{ "slow",            "",                        0,                    AV_OPT_TYPE_CONST, { .i64 = 4 },            0, 0, VE, "preset" },
++	{ "medium",          "",                        0,                    AV_OPT_TYPE_CONST, { .i64 = 3 },            0, 0, VE, "preset" },
++	{ "fast",            "",                        0,                    AV_OPT_TYPE_CONST, { .i64 = 2 },            0, 0, VE, "preset" },
++	{ "ultrafast",       "",                        0,                    AV_OPT_TYPE_CONST, { .i64 = 1 },            0, 0, VE, "preset" },
++	{ NULL }
++};
++
++
++#define NVMPI_ENC_CLASS(NAME) \
++	static const AVClass nvmpi_ ## NAME ## _enc_class = { \
++		.class_name = #NAME "_nvmpi_encoder", \
++		.item_name  = av_default_item_name, \
++		.option     = options, \
++		.version    = LIBAVUTIL_VERSION_INT, \
++	};
++
++
++#define NVMPI_ENC(NAME, LONGNAME, CODEC) \
++	NVMPI_ENC_CLASS(NAME) \
++	AVCodec ff_ ## NAME ## _nvmpi_encoder = { \
++		.name           = #NAME "_nvmpi" , \
++		.long_name      = NULL_IF_CONFIG_SMALL("nvmpi " LONGNAME " encoder wrapper"), \
++		.type           = AVMEDIA_TYPE_VIDEO, \
++		.id             = CODEC , \
++		.priv_data_size = sizeof(nvmpiEncodeContext), \
++		.priv_class     = &nvmpi_ ## NAME ##_enc_class, \
++		.init           = nvmpi_encode_init, \
++		.encode2        = nvmpi_encode_frame, \
++		.close          = nvmpi_encode_close, \
++		.pix_fmts       = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV420P, AV_PIX_FMT_NONE },\
++		.capabilities   = AV_CODEC_CAP_HARDWARE | AV_CODEC_CAP_DELAY, \
++		.defaults       = defaults,\
++		.wrapper_name   = "nvmpi", \
++	};
++
++NVMPI_ENC(h264, "H.264", AV_CODEC_ID_H264);
++NVMPI_ENC(hevc, "HEVC", AV_CODEC_ID_HEVC);
+diff -ruN ffmpeg-4.3.1-orig/libavcodec/parser_list.c ffmpeg-4.3.1/libavcodec/parser_list.c
+--- ffmpeg-4.3.1-orig/libavcodec/parser_list.c	1970-01-01 03:00:00.000000000 +0300
++++ ffmpeg-4.3.1/libavcodec/parser_list.c	2021-06-10 15:07:03.512323260 +0300
+@@ -0,0 +1,49 @@
++static const AVCodecParser * const parser_list[] = {
++    &ff_aac_parser,
++    &ff_aac_latm_parser,
++    &ff_ac3_parser,
++    &ff_adx_parser,
++    &ff_av1_parser,
++    &ff_avs2_parser,
++    &ff_bmp_parser,
++    &ff_cavsvideo_parser,
++    &ff_cook_parser,
++    &ff_dca_parser,
++    &ff_dirac_parser,
++    &ff_dnxhd_parser,
++    &ff_dpx_parser,
++    &ff_dvaudio_parser,
++    &ff_dvbsub_parser,
++    &ff_dvdsub_parser,
++    &ff_dvd_nav_parser,
++    &ff_flac_parser,
++    &ff_g723_1_parser,
++    &ff_g729_parser,
++    &ff_gif_parser,
++    &ff_gsm_parser,
++    &ff_h261_parser,
++    &ff_h263_parser,
++    &ff_h264_parser,
++    &ff_hevc_parser,
++    &ff_jpeg2000_parser,
++    &ff_mjpeg_parser,
++    &ff_mlp_parser,
++    &ff_mpeg4video_parser,
++    &ff_mpegaudio_parser,
++    &ff_mpegvideo_parser,
++    &ff_opus_parser,
++    &ff_png_parser,
++    &ff_pnm_parser,
++    &ff_rv30_parser,
++    &ff_rv40_parser,
++    &ff_sbc_parser,
++    &ff_sipr_parser,
++    &ff_tak_parser,
++    &ff_vc1_parser,
++    &ff_vorbis_parser,
++    &ff_vp3_parser,
++    &ff_vp8_parser,
++    &ff_vp9_parser,
++    &ff_webp_parser,
++    &ff_xma_parser,
++    NULL };
+diff -ruN ffmpeg-4.3.1-orig/libavdevice/indev_list.c ffmpeg-4.3.1/libavdevice/indev_list.c
+--- ffmpeg-4.3.1-orig/libavdevice/indev_list.c	1970-01-01 03:00:00.000000000 +0300
++++ ffmpeg-4.3.1/libavdevice/indev_list.c	2021-06-10 15:07:03.608325336 +0300
+@@ -0,0 +1,8 @@
++static const AVInputFormat * const indev_list[] = {
++    &ff_alsa_demuxer,
++    &ff_fbdev_demuxer,
++    &ff_lavfi_demuxer,
++    &ff_oss_demuxer,
++    &ff_v4l2_demuxer,
++    &ff_xcbgrab_demuxer,
++    NULL };
+diff -ruN ffmpeg-4.3.1-orig/libavdevice/outdev_list.c ffmpeg-4.3.1/libavdevice/outdev_list.c
+--- ffmpeg-4.3.1-orig/libavdevice/outdev_list.c	1970-01-01 03:00:00.000000000 +0300
++++ ffmpeg-4.3.1/libavdevice/outdev_list.c	2021-06-10 15:07:03.620325596 +0300
+@@ -0,0 +1,6 @@
++static const AVOutputFormat * const outdev_list[] = {
++    &ff_alsa_muxer,
++    &ff_fbdev_muxer,
++    &ff_oss_muxer,
++    &ff_v4l2_muxer,
++    NULL };
+diff -ruN ffmpeg-4.3.1-orig/libavfilter/filter_list.c ffmpeg-4.3.1/libavfilter/filter_list.c
+--- ffmpeg-4.3.1-orig/libavfilter/filter_list.c	1970-01-01 03:00:00.000000000 +0300
++++ ffmpeg-4.3.1/libavfilter/filter_list.c	2021-06-10 15:07:03.420321271 +0300
+@@ -0,0 +1,369 @@
++static const AVFilter * const filter_list[] = {
++    &ff_af_abench,
++    &ff_af_acompressor,
++    &ff_af_acontrast,
++    &ff_af_acopy,
++    &ff_af_acue,
++    &ff_af_acrossfade,
++    &ff_af_acrossover,
++    &ff_af_acrusher,
++    &ff_af_adeclick,
++    &ff_af_adeclip,
++    &ff_af_adelay,
++    &ff_af_aderivative,
++    &ff_af_aecho,
++    &ff_af_aemphasis,
++    &ff_af_aeval,
++    &ff_af_afade,
++    &ff_af_afftdn,
++    &ff_af_afftfilt,
++    &ff_af_afir,
++    &ff_af_aformat,
++    &ff_af_agate,
++    &ff_af_aiir,
++    &ff_af_aintegral,
++    &ff_af_ainterleave,
++    &ff_af_alimiter,
++    &ff_af_allpass,
++    &ff_af_aloop,
++    &ff_af_amerge,
++    &ff_af_ametadata,
++    &ff_af_amix,
++    &ff_af_amultiply,
++    &ff_af_anequalizer,
++    &ff_af_anlmdn,
++    &ff_af_anlms,
++    &ff_af_anull,
++    &ff_af_apad,
++    &ff_af_aperms,
++    &ff_af_aphaser,
++    &ff_af_apulsator,
++    &ff_af_arealtime,
++    &ff_af_aresample,
++    &ff_af_areverse,
++    &ff_af_arnndn,
++    &ff_af_aselect,
++    &ff_af_asendcmd,
++    &ff_af_asetnsamples,
++    &ff_af_asetpts,
++    &ff_af_asetrate,
++    &ff_af_asettb,
++    &ff_af_ashowinfo,
++    &ff_af_asidedata,
++    &ff_af_asoftclip,
++    &ff_af_asplit,
++    &ff_af_astats,
++    &ff_af_astreamselect,
++    &ff_af_asubboost,
++    &ff_af_atempo,
++    &ff_af_atrim,
++    &ff_af_axcorrelate,
++    &ff_af_bandpass,
++    &ff_af_bandreject,
++    &ff_af_bass,
++    &ff_af_biquad,
++    &ff_af_channelmap,
++    &ff_af_channelsplit,
++    &ff_af_chorus,
++    &ff_af_compand,
++    &ff_af_compensationdelay,
++    &ff_af_crossfeed,
++    &ff_af_crystalizer,
++    &ff_af_dcshift,
++    &ff_af_deesser,
++    &ff_af_drmeter,
++    &ff_af_dynaudnorm,
++    &ff_af_earwax,
++    &ff_af_ebur128,
++    &ff_af_equalizer,
++    &ff_af_extrastereo,
++    &ff_af_firequalizer,
++    &ff_af_flanger,
++    &ff_af_haas,
++    &ff_af_hdcd,
++    &ff_af_headphone,
++    &ff_af_highpass,
++    &ff_af_highshelf,
++    &ff_af_join,
++    &ff_af_loudnorm,
++    &ff_af_lowpass,
++    &ff_af_lowshelf,
++    &ff_af_mcompand,
++    &ff_af_pan,
++    &ff_af_replaygain,
++    &ff_af_sidechaincompress,
++    &ff_af_sidechaingate,
++    &ff_af_silencedetect,
++    &ff_af_silenceremove,
++    &ff_af_stereotools,
++    &ff_af_stereowiden,
++    &ff_af_superequalizer,
++    &ff_af_surround,
++    &ff_af_treble,
++    &ff_af_tremolo,
++    &ff_af_vibrato,
++    &ff_af_volume,
++    &ff_af_volumedetect,
++    &ff_asrc_aevalsrc,
++    &ff_asrc_afirsrc,
++    &ff_asrc_anoisesrc,
++    &ff_asrc_anullsrc,
++    &ff_asrc_hilbert,
++    &ff_asrc_sinc,
++    &ff_asrc_sine,
++    &ff_asink_anullsink,
++    &ff_vf_addroi,
++    &ff_vf_alphaextract,
++    &ff_vf_alphamerge,
++    &ff_vf_amplify,
++    &ff_vf_atadenoise,
++    &ff_vf_avgblur,
++    &ff_vf_bbox,
++    &ff_vf_bench,
++    &ff_vf_bilateral,
++    &ff_vf_bitplanenoise,
++    &ff_vf_blackdetect,
++    &ff_vf_blend,
++    &ff_vf_bm3d,
++    &ff_vf_bwdif,
++    &ff_vf_cas,
++    &ff_vf_chromahold,
++    &ff_vf_chromakey,
++    &ff_vf_chromashift,
++    &ff_vf_ciescope,
++    &ff_vf_codecview,
++    &ff_vf_colorbalance,
++    &ff_vf_colorchannelmixer,
++    &ff_vf_colorkey,
++    &ff_vf_colorhold,
++    &ff_vf_colorlevels,
++    &ff_vf_colorspace,
++    &ff_vf_convolution,
++    &ff_vf_convolve,
++    &ff_vf_copy,
++    &ff_vf_crop,
++    &ff_vf_cue,
++    &ff_vf_curves,
++    &ff_vf_datascope,
++    &ff_vf_dblur,
++    &ff_vf_dctdnoiz,
++    &ff_vf_deband,
++    &ff_vf_deblock,
++    &ff_vf_decimate,
++    &ff_vf_deconvolve,
++    &ff_vf_dedot,
++    &ff_vf_deflate,
++    &ff_vf_deflicker,
++    &ff_vf_dejudder,
++    &ff_vf_derain,
++    &ff_vf_deshake,
++    &ff_vf_despill,
++    &ff_vf_detelecine,
++    &ff_vf_dilation,
++    &ff_vf_displace,
++    &ff_vf_dnn_processing,
++    &ff_vf_doubleweave,
++    &ff_vf_drawbox,
++    &ff_vf_drawgraph,
++    &ff_vf_drawgrid,
++    &ff_vf_edgedetect,
++    &ff_vf_elbg,
++    &ff_vf_entropy,
++    &ff_vf_erosion,
++    &ff_vf_extractplanes,
++    &ff_vf_fade,
++    &ff_vf_fftdnoiz,
++    &ff_vf_fftfilt,
++    &ff_vf_field,
++    &ff_vf_fieldhint,
++    &ff_vf_fieldmatch,
++    &ff_vf_fieldorder,
++    &ff_vf_fillborders,
++    &ff_vf_floodfill,
++    &ff_vf_format,
++    &ff_vf_fps,
++    &ff_vf_framepack,
++    &ff_vf_framerate,
++    &ff_vf_framestep,
++    &ff_vf_freezedetect,
++    &ff_vf_freezeframes,
++    &ff_vf_gblur,
++    &ff_vf_geq,
++    &ff_vf_gradfun,
++    &ff_vf_graphmonitor,
++    &ff_vf_greyedge,
++    &ff_vf_haldclut,
++    &ff_vf_hflip,
++    &ff_vf_histogram,
++    &ff_vf_hqx,
++    &ff_vf_hstack,
++    &ff_vf_hue,
++    &ff_vf_hwdownload,
++    &ff_vf_hwmap,
++    &ff_vf_hwupload,
++    &ff_vf_hysteresis,
++    &ff_vf_idet,
++    &ff_vf_il,
++    &ff_vf_inflate,
++    &ff_vf_interleave,
++    &ff_vf_lagfun,
++    &ff_vf_lenscorrection,
++    &ff_vf_limiter,
++    &ff_vf_loop,
++    &ff_vf_lumakey,
++    &ff_vf_lut,
++    &ff_vf_lut1d,
++    &ff_vf_lut2,
++    &ff_vf_lut3d,
++    &ff_vf_lutrgb,
++    &ff_vf_lutyuv,
++    &ff_vf_maskedclamp,
++    &ff_vf_maskedmax,
++    &ff_vf_maskedmerge,
++    &ff_vf_maskedmin,
++    &ff_vf_maskedthreshold,
++    &ff_vf_maskfun,
++    &ff_vf_median,
++    &ff_vf_mergeplanes,
++    &ff_vf_mestimate,
++    &ff_vf_metadata,
++    &ff_vf_midequalizer,
++    &ff_vf_minterpolate,
++    &ff_vf_mix,
++    &ff_vf_negate,
++    &ff_vf_nlmeans,
++    &ff_vf_noformat,
++    &ff_vf_noise,
++    &ff_vf_normalize,
++    &ff_vf_null,
++    &ff_vf_oscilloscope,
++    &ff_vf_overlay,
++    &ff_vf_pad,
++    &ff_vf_palettegen,
++    &ff_vf_paletteuse,
++    &ff_vf_perms,
++    &ff_vf_photosensitivity,
++    &ff_vf_pixdesctest,
++    &ff_vf_pixscope,
++    &ff_vf_premultiply,
++    &ff_vf_prewitt,
++    &ff_vf_pseudocolor,
++    &ff_vf_psnr,
++    &ff_vf_qp,
++    &ff_vf_random,
++    &ff_vf_readeia608,
++    &ff_vf_readvitc,
++    &ff_vf_realtime,
++    &ff_vf_remap,
++    &ff_vf_removegrain,
++    &ff_vf_removelogo,
++    &ff_vf_reverse,
++    &ff_vf_rgbashift,
++    &ff_vf_roberts,
++    &ff_vf_rotate,
++    &ff_vf_scale,
++    &ff_vf_scale2ref,
++    &ff_vf_scdet,
++    &ff_vf_scroll,
++    &ff_vf_select,
++    &ff_vf_selectivecolor,
++    &ff_vf_sendcmd,
++    &ff_vf_separatefields,
++    &ff_vf_setdar,
++    &ff_vf_setfield,
++    &ff_vf_setparams,
++    &ff_vf_setpts,
++    &ff_vf_setrange,
++    &ff_vf_setsar,
++    &ff_vf_settb,
++    &ff_vf_showinfo,
++    &ff_vf_showpalette,
++    &ff_vf_shuffleframes,
++    &ff_vf_shuffleplanes,
++    &ff_vf_sidedata,
++    &ff_vf_signalstats,
++    &ff_vf_sobel,
++    &ff_vf_split,
++    &ff_vf_sr,
++    &ff_vf_ssim,
++    &ff_vf_streamselect,
++    &ff_vf_swaprect,
++    &ff_vf_swapuv,
++    &ff_vf_tblend,
++    &ff_vf_telecine,
++    &ff_vf_thistogram,
++    &ff_vf_threshold,
++    &ff_vf_thumbnail,
++    &ff_vf_tile,
++    &ff_vf_tlut2,
++    &ff_vf_tmedian,
++    &ff_vf_tmix,
++    &ff_vf_tonemap,
++    &ff_vf_tpad,
++    &ff_vf_transpose,
++    &ff_vf_trim,
++    &ff_vf_unpremultiply,
++    &ff_vf_unsharp,
++    &ff_vf_untile,
++    &ff_vf_v360,
++    &ff_vf_vectorscope,
++    &ff_vf_vflip,
++    &ff_vf_vfrdet,
++    &ff_vf_vibrance,
++    &ff_vf_vignette,
++    &ff_vf_vmafmotion,
++    &ff_vf_vstack,
++    &ff_vf_w3fdif,
++    &ff_vf_waveform,
++    &ff_vf_weave,
++    &ff_vf_xbr,
++    &ff_vf_xfade,
++    &ff_vf_xmedian,
++    &ff_vf_xstack,
++    &ff_vf_yadif,
++    &ff_vf_yaepblur,
++    &ff_vf_zoompan,
++    &ff_vsrc_allrgb,
++    &ff_vsrc_allyuv,
++    &ff_vsrc_cellauto,
++    &ff_vsrc_color,
++    &ff_vsrc_gradients,
++    &ff_vsrc_haldclutsrc,
++    &ff_vsrc_life,
++    &ff_vsrc_mandelbrot,
++    &ff_vsrc_nullsrc,
++    &ff_vsrc_pal75bars,
++    &ff_vsrc_pal100bars,
++    &ff_vsrc_rgbtestsrc,
++    &ff_vsrc_sierpinski,
++    &ff_vsrc_smptebars,
++    &ff_vsrc_smptehdbars,
++    &ff_vsrc_testsrc,
++    &ff_vsrc_testsrc2,
++    &ff_vsrc_yuvtestsrc,
++    &ff_vsink_nullsink,
++    &ff_avf_abitscope,
++    &ff_avf_adrawgraph,
++    &ff_avf_agraphmonitor,
++    &ff_avf_ahistogram,
++    &ff_avf_aphasemeter,
++    &ff_avf_avectorscope,
++    &ff_avf_concat,
++    &ff_avf_showcqt,
++    &ff_avf_showfreqs,
++    &ff_avf_showspatial,
++    &ff_avf_showspectrum,
++    &ff_avf_showspectrumpic,
++    &ff_avf_showvolume,
++    &ff_avf_showwaves,
++    &ff_avf_showwavespic,
++    &ff_vaf_spectrumsynth,
++    &ff_avsrc_amovie,
++    &ff_avsrc_movie,
++    &ff_af_afifo,
++    &ff_vf_fifo,
++    &ff_asrc_abuffer,
++    &ff_vsrc_buffer,
++    &ff_asink_abuffer,
++    &ff_vsink_buffer,
++    NULL };
+diff -ruN ffmpeg-4.3.1-orig/libavformat/demuxer_list.c ffmpeg-4.3.1/libavformat/demuxer_list.c
+--- ffmpeg-4.3.1-orig/libavformat/demuxer_list.c	1970-01-01 03:00:00.000000000 +0300
++++ ffmpeg-4.3.1/libavformat/demuxer_list.c	2021-06-10 15:07:03.568324471 +0300
+@@ -0,0 +1,306 @@
++static const AVInputFormat * const demuxer_list[] = {
++    &ff_aa_demuxer,
++    &ff_aac_demuxer,
++    &ff_ac3_demuxer,
++    &ff_acm_demuxer,
++    &ff_act_demuxer,
++    &ff_adf_demuxer,
++    &ff_adp_demuxer,
++    &ff_ads_demuxer,
++    &ff_adx_demuxer,
++    &ff_aea_demuxer,
++    &ff_afc_demuxer,
++    &ff_aiff_demuxer,
++    &ff_aix_demuxer,
++    &ff_alp_demuxer,
++    &ff_amr_demuxer,
++    &ff_amrnb_demuxer,
++    &ff_amrwb_demuxer,
++    &ff_anm_demuxer,
++    &ff_apc_demuxer,
++    &ff_ape_demuxer,
++    &ff_apm_demuxer,
++    &ff_apng_demuxer,
++    &ff_aptx_demuxer,
++    &ff_aptx_hd_demuxer,
++    &ff_aqtitle_demuxer,
++    &ff_argo_asf_demuxer,
++    &ff_asf_demuxer,
++    &ff_asf_o_demuxer,
++    &ff_ass_demuxer,
++    &ff_ast_demuxer,
++    &ff_au_demuxer,
++    &ff_av1_demuxer,
++    &ff_avi_demuxer,
++    &ff_avr_demuxer,
++    &ff_avs_demuxer,
++    &ff_avs2_demuxer,
++    &ff_bethsoftvid_demuxer,
++    &ff_bfi_demuxer,
++    &ff_bintext_demuxer,
++    &ff_bink_demuxer,
++    &ff_bit_demuxer,
++    &ff_bmv_demuxer,
++    &ff_bfstm_demuxer,
++    &ff_brstm_demuxer,
++    &ff_boa_demuxer,
++    &ff_c93_demuxer,
++    &ff_caf_demuxer,
++    &ff_cavsvideo_demuxer,
++    &ff_cdg_demuxer,
++    &ff_cdxl_demuxer,
++    &ff_cine_demuxer,
++    &ff_codec2_demuxer,
++    &ff_codec2raw_demuxer,
++    &ff_concat_demuxer,
++    &ff_data_demuxer,
++    &ff_daud_demuxer,
++    &ff_dcstr_demuxer,
++    &ff_derf_demuxer,
++    &ff_dfa_demuxer,
++    &ff_dhav_demuxer,
++    &ff_dirac_demuxer,
++    &ff_dnxhd_demuxer,
++    &ff_dsf_demuxer,
++    &ff_dsicin_demuxer,
++    &ff_dss_demuxer,
++    &ff_dts_demuxer,
++    &ff_dtshd_demuxer,
++    &ff_dv_demuxer,
++    &ff_dvbsub_demuxer,
++    &ff_dvbtxt_demuxer,
++    &ff_dxa_demuxer,
++    &ff_ea_demuxer,
++    &ff_ea_cdata_demuxer,
++    &ff_eac3_demuxer,
++    &ff_epaf_demuxer,
++    &ff_ffmetadata_demuxer,
++    &ff_filmstrip_demuxer,
++    &ff_fits_demuxer,
++    &ff_flac_demuxer,
++    &ff_flic_demuxer,
++    &ff_flv_demuxer,
++    &ff_live_flv_demuxer,
++    &ff_fourxm_demuxer,
++    &ff_frm_demuxer,
++    &ff_fsb_demuxer,
++    &ff_fwse_demuxer,
++    &ff_g722_demuxer,
++    &ff_g723_1_demuxer,
++    &ff_g726_demuxer,
++    &ff_g726le_demuxer,
++    &ff_g729_demuxer,
++    &ff_gdv_demuxer,
++    &ff_genh_demuxer,
++    &ff_gif_demuxer,
++    &ff_gsm_demuxer,
++    &ff_gxf_demuxer,
++    &ff_h261_demuxer,
++    &ff_h263_demuxer,
++    &ff_h264_demuxer,
++    &ff_hca_demuxer,
++    &ff_hcom_demuxer,
++    &ff_hevc_demuxer,
++    &ff_hls_demuxer,
++    &ff_hnm_demuxer,
++    &ff_ico_demuxer,
++    &ff_idcin_demuxer,
++    &ff_idf_demuxer,
++    &ff_iff_demuxer,
++    &ff_ifv_demuxer,
++    &ff_ilbc_demuxer,
++    &ff_image2_demuxer,
++    &ff_image2pipe_demuxer,
++    &ff_image2_alias_pix_demuxer,
++    &ff_image2_brender_pix_demuxer,
++    &ff_ingenient_demuxer,
++    &ff_ipmovie_demuxer,
++    &ff_ircam_demuxer,
++    &ff_iss_demuxer,
++    &ff_iv8_demuxer,
++    &ff_ivf_demuxer,
++    &ff_ivr_demuxer,
++    &ff_jacosub_demuxer,
++    &ff_jv_demuxer,
++    &ff_kux_demuxer,
++    &ff_kvag_demuxer,
++    &ff_lmlm4_demuxer,
++    &ff_loas_demuxer,
++    &ff_lrc_demuxer,
++    &ff_lvf_demuxer,
++    &ff_lxf_demuxer,
++    &ff_m4v_demuxer,
++    &ff_matroska_demuxer,
++    &ff_mgsts_demuxer,
++    &ff_microdvd_demuxer,
++    &ff_mjpeg_demuxer,
++    &ff_mjpeg_2000_demuxer,
++    &ff_mlp_demuxer,
++    &ff_mlv_demuxer,
++    &ff_mm_demuxer,
++    &ff_mmf_demuxer,
++    &ff_mov_demuxer,
++    &ff_mp3_demuxer,
++    &ff_mpc_demuxer,
++    &ff_mpc8_demuxer,
++    &ff_mpegps_demuxer,
++    &ff_mpegts_demuxer,
++    &ff_mpegtsraw_demuxer,
++    &ff_mpegvideo_demuxer,
++    &ff_mpjpeg_demuxer,
++    &ff_mpl2_demuxer,
++    &ff_mpsub_demuxer,
++    &ff_msf_demuxer,
++    &ff_msnwc_tcp_demuxer,
++    &ff_mtaf_demuxer,
++    &ff_mtv_demuxer,
++    &ff_musx_demuxer,
++    &ff_mv_demuxer,
++    &ff_mvi_demuxer,
++    &ff_mxf_demuxer,
++    &ff_mxg_demuxer,
++    &ff_nc_demuxer,
++    &ff_nistsphere_demuxer,
++    &ff_nsp_demuxer,
++    &ff_nsv_demuxer,
++    &ff_nut_demuxer,
++    &ff_nuv_demuxer,
++    &ff_ogg_demuxer,
++    &ff_oma_demuxer,
++    &ff_paf_demuxer,
++    &ff_pcm_alaw_demuxer,
++    &ff_pcm_mulaw_demuxer,
++    &ff_pcm_vidc_demuxer,
++    &ff_pcm_f64be_demuxer,
++    &ff_pcm_f64le_demuxer,
++    &ff_pcm_f32be_demuxer,
++    &ff_pcm_f32le_demuxer,
++    &ff_pcm_s32be_demuxer,
++    &ff_pcm_s32le_demuxer,
++    &ff_pcm_s24be_demuxer,
++    &ff_pcm_s24le_demuxer,
++    &ff_pcm_s16be_demuxer,
++    &ff_pcm_s16le_demuxer,
++    &ff_pcm_s8_demuxer,
++    &ff_pcm_u32be_demuxer,
++    &ff_pcm_u32le_demuxer,
++    &ff_pcm_u24be_demuxer,
++    &ff_pcm_u24le_demuxer,
++    &ff_pcm_u16be_demuxer,
++    &ff_pcm_u16le_demuxer,
++    &ff_pcm_u8_demuxer,
++    &ff_pjs_demuxer,
++    &ff_pmp_demuxer,
++    &ff_pp_bnk_demuxer,
++    &ff_pva_demuxer,
++    &ff_pvf_demuxer,
++    &ff_qcp_demuxer,
++    &ff_r3d_demuxer,
++    &ff_rawvideo_demuxer,
++    &ff_realtext_demuxer,
++    &ff_redspark_demuxer,
++    &ff_rl2_demuxer,
++    &ff_rm_demuxer,
++    &ff_roq_demuxer,
++    &ff_rpl_demuxer,
++    &ff_rsd_demuxer,
++    &ff_rso_demuxer,
++    &ff_rtp_demuxer,
++    &ff_rtsp_demuxer,
++    &ff_s337m_demuxer,
++    &ff_sami_demuxer,
++    &ff_sap_demuxer,
++    &ff_sbc_demuxer,
++    &ff_sbg_demuxer,
++    &ff_scc_demuxer,
++    &ff_sdp_demuxer,
++    &ff_sdr2_demuxer,
++    &ff_sds_demuxer,
++    &ff_sdx_demuxer,
++    &ff_segafilm_demuxer,
++    &ff_ser_demuxer,
++    &ff_shorten_demuxer,
++    &ff_siff_demuxer,
++    &ff_sln_demuxer,
++    &ff_smacker_demuxer,
++    &ff_smjpeg_demuxer,
++    &ff_smush_demuxer,
++    &ff_sol_demuxer,
++    &ff_sox_demuxer,
++    &ff_spdif_demuxer,
++    &ff_srt_demuxer,
++    &ff_str_demuxer,
++    &ff_stl_demuxer,
++    &ff_subviewer1_demuxer,
++    &ff_subviewer_demuxer,
++    &ff_sup_demuxer,
++    &ff_svag_demuxer,
++    &ff_swf_demuxer,
++    &ff_tak_demuxer,
++    &ff_tedcaptions_demuxer,
++    &ff_thp_demuxer,
++    &ff_threedostr_demuxer,
++    &ff_tiertexseq_demuxer,
++    &ff_tmv_demuxer,
++    &ff_truehd_demuxer,
++    &ff_tta_demuxer,
++    &ff_txd_demuxer,
++    &ff_tty_demuxer,
++    &ff_ty_demuxer,
++    &ff_v210_demuxer,
++    &ff_v210x_demuxer,
++    &ff_vag_demuxer,
++    &ff_vc1_demuxer,
++    &ff_vc1t_demuxer,
++    &ff_vividas_demuxer,
++    &ff_vivo_demuxer,
++    &ff_vmd_demuxer,
++    &ff_vobsub_demuxer,
++    &ff_voc_demuxer,
++    &ff_vpk_demuxer,
++    &ff_vplayer_demuxer,
++    &ff_vqf_demuxer,
++    &ff_w64_demuxer,
++    &ff_wav_demuxer,
++    &ff_wc3_demuxer,
++    &ff_webm_dash_manifest_demuxer,
++    &ff_webvtt_demuxer,
++    &ff_wsaud_demuxer,
++    &ff_wsd_demuxer,
++    &ff_wsvqa_demuxer,
++    &ff_wtv_demuxer,
++    &ff_wve_demuxer,
++    &ff_wv_demuxer,
++    &ff_xa_demuxer,
++    &ff_xbin_demuxer,
++    &ff_xmv_demuxer,
++    &ff_xvag_demuxer,
++    &ff_xwma_demuxer,
++    &ff_yop_demuxer,
++    &ff_yuv4mpegpipe_demuxer,
++    &ff_image_bmp_pipe_demuxer,
++    &ff_image_dds_pipe_demuxer,
++    &ff_image_dpx_pipe_demuxer,
++    &ff_image_exr_pipe_demuxer,
++    &ff_image_gif_pipe_demuxer,
++    &ff_image_j2k_pipe_demuxer,
++    &ff_image_jpeg_pipe_demuxer,
++    &ff_image_jpegls_pipe_demuxer,
++    &ff_image_pam_pipe_demuxer,
++    &ff_image_pbm_pipe_demuxer,
++    &ff_image_pcx_pipe_demuxer,
++    &ff_image_pgmyuv_pipe_demuxer,
++    &ff_image_pgm_pipe_demuxer,
++    &ff_image_pictor_pipe_demuxer,
++    &ff_image_png_pipe_demuxer,
++    &ff_image_ppm_pipe_demuxer,
++    &ff_image_psd_pipe_demuxer,
++    &ff_image_qdraw_pipe_demuxer,
++    &ff_image_sgi_pipe_demuxer,
++    &ff_image_svg_pipe_demuxer,
++    &ff_image_sunrast_pipe_demuxer,
++    &ff_image_tiff_pipe_demuxer,
++    &ff_image_webp_pipe_demuxer,
++    &ff_image_xpm_pipe_demuxer,
++    &ff_image_xwd_pipe_demuxer,
++    NULL };
+diff -ruN ffmpeg-4.3.1-orig/libavformat/muxer_list.c ffmpeg-4.3.1/libavformat/muxer_list.c
+--- ffmpeg-4.3.1-orig/libavformat/muxer_list.c	1970-01-01 03:00:00.000000000 +0300
++++ ffmpeg-4.3.1/libavformat/muxer_list.c	2021-06-10 15:07:03.596325077 +0300
+@@ -0,0 +1,166 @@
++static const AVOutputFormat * const muxer_list[] = {
++    &ff_a64_muxer,
++    &ff_ac3_muxer,
++    &ff_adts_muxer,
++    &ff_adx_muxer,
++    &ff_aiff_muxer,
++    &ff_amr_muxer,
++    &ff_apng_muxer,
++    &ff_aptx_muxer,
++    &ff_aptx_hd_muxer,
++    &ff_asf_muxer,
++    &ff_ass_muxer,
++    &ff_ast_muxer,
++    &ff_asf_stream_muxer,
++    &ff_au_muxer,
++    &ff_avi_muxer,
++    &ff_avm2_muxer,
++    &ff_avs2_muxer,
++    &ff_bit_muxer,
++    &ff_caf_muxer,
++    &ff_cavsvideo_muxer,
++    &ff_codec2_muxer,
++    &ff_codec2raw_muxer,
++    &ff_crc_muxer,
++    &ff_dash_muxer,
++    &ff_data_muxer,
++    &ff_daud_muxer,
++    &ff_dirac_muxer,
++    &ff_dnxhd_muxer,
++    &ff_dts_muxer,
++    &ff_dv_muxer,
++    &ff_eac3_muxer,
++    &ff_f4v_muxer,
++    &ff_ffmetadata_muxer,
++    &ff_fifo_muxer,
++    &ff_fifo_test_muxer,
++    &ff_filmstrip_muxer,
++    &ff_fits_muxer,
++    &ff_flac_muxer,
++    &ff_flv_muxer,
++    &ff_framecrc_muxer,
++    &ff_framehash_muxer,
++    &ff_framemd5_muxer,
++    &ff_g722_muxer,
++    &ff_g723_1_muxer,
++    &ff_g726_muxer,
++    &ff_g726le_muxer,
++    &ff_gif_muxer,
++    &ff_gsm_muxer,
++    &ff_gxf_muxer,
++    &ff_h261_muxer,
++    &ff_h263_muxer,
++    &ff_h264_muxer,
++    &ff_hash_muxer,
++    &ff_hds_muxer,
++    &ff_hevc_muxer,
++    &ff_hls_muxer,
++    &ff_ico_muxer,
++    &ff_ilbc_muxer,
++    &ff_image2_muxer,
++    &ff_image2pipe_muxer,
++    &ff_ipod_muxer,
++    &ff_ircam_muxer,
++    &ff_ismv_muxer,
++    &ff_ivf_muxer,
++    &ff_jacosub_muxer,
++    &ff_kvag_muxer,
++    &ff_latm_muxer,
++    &ff_lrc_muxer,
++    &ff_m4v_muxer,
++    &ff_md5_muxer,
++    &ff_matroska_muxer,
++    &ff_matroska_audio_muxer,
++    &ff_microdvd_muxer,
++    &ff_mjpeg_muxer,
++    &ff_mlp_muxer,
++    &ff_mmf_muxer,
++    &ff_mov_muxer,
++    &ff_mp2_muxer,
++    &ff_mp3_muxer,
++    &ff_mp4_muxer,
++    &ff_mpeg1system_muxer,
++    &ff_mpeg1vcd_muxer,
++    &ff_mpeg1video_muxer,
++    &ff_mpeg2dvd_muxer,
++    &ff_mpeg2svcd_muxer,
++    &ff_mpeg2video_muxer,
++    &ff_mpeg2vob_muxer,
++    &ff_mpegts_muxer,
++    &ff_mpjpeg_muxer,
++    &ff_mxf_muxer,
++    &ff_mxf_d10_muxer,
++    &ff_mxf_opatom_muxer,
++    &ff_null_muxer,
++    &ff_nut_muxer,
++    &ff_oga_muxer,
++    &ff_ogg_muxer,
++    &ff_ogv_muxer,
++    &ff_oma_muxer,
++    &ff_opus_muxer,
++    &ff_pcm_alaw_muxer,
++    &ff_pcm_mulaw_muxer,
++    &ff_pcm_vidc_muxer,
++    &ff_pcm_f64be_muxer,
++    &ff_pcm_f64le_muxer,
++    &ff_pcm_f32be_muxer,
++    &ff_pcm_f32le_muxer,
++    &ff_pcm_s32be_muxer,
++    &ff_pcm_s32le_muxer,
++    &ff_pcm_s24be_muxer,
++    &ff_pcm_s24le_muxer,
++    &ff_pcm_s16be_muxer,
++    &ff_pcm_s16le_muxer,
++    &ff_pcm_s8_muxer,
++    &ff_pcm_u32be_muxer,
++    &ff_pcm_u32le_muxer,
++    &ff_pcm_u24be_muxer,
++    &ff_pcm_u24le_muxer,
++    &ff_pcm_u16be_muxer,
++    &ff_pcm_u16le_muxer,
++    &ff_pcm_u8_muxer,
++    &ff_psp_muxer,
++    &ff_rawvideo_muxer,
++    &ff_rm_muxer,
++    &ff_roq_muxer,
++    &ff_rso_muxer,
++    &ff_rtp_muxer,
++    &ff_rtp_mpegts_muxer,
++    &ff_rtsp_muxer,
++    &ff_sap_muxer,
++    &ff_sbc_muxer,
++    &ff_scc_muxer,
++    &ff_segafilm_muxer,
++    &ff_segment_muxer,
++    &ff_stream_segment_muxer,
++    &ff_singlejpeg_muxer,
++    &ff_smjpeg_muxer,
++    &ff_smoothstreaming_muxer,
++    &ff_sox_muxer,
++    &ff_spx_muxer,
++    &ff_spdif_muxer,
++    &ff_srt_muxer,
++    &ff_streamhash_muxer,
++    &ff_sup_muxer,
++    &ff_swf_muxer,
++    &ff_tee_muxer,
++    &ff_tg2_muxer,
++    &ff_tgp_muxer,
++    &ff_mkvtimestamp_v2_muxer,
++    &ff_truehd_muxer,
++    &ff_tta_muxer,
++    &ff_uncodedframecrc_muxer,
++    &ff_vc1_muxer,
++    &ff_vc1t_muxer,
++    &ff_voc_muxer,
++    &ff_w64_muxer,
++    &ff_wav_muxer,
++    &ff_webm_muxer,
++    &ff_webm_dash_manifest_muxer,
++    &ff_webm_chunk_muxer,
++    &ff_webp_muxer,
++    &ff_webvtt_muxer,
++    &ff_wtv_muxer,
++    &ff_wv_muxer,
++    &ff_yuv4mpegpipe_muxer,
++    NULL };
+diff -ruN ffmpeg-4.3.1-orig/libavformat/protocol_list.c ffmpeg-4.3.1/libavformat/protocol_list.c
+--- ffmpeg-4.3.1-orig/libavformat/protocol_list.c	1970-01-01 03:00:00.000000000 +0300
++++ ffmpeg-4.3.1/libavformat/protocol_list.c	2021-06-10 15:07:03.640326028 +0300
+@@ -0,0 +1,30 @@
++static const URLProtocol * const url_protocols[] = {
++    &ff_async_protocol,
++    &ff_cache_protocol,
++    &ff_concat_protocol,
++    &ff_crypto_protocol,
++    &ff_data_protocol,
++    &ff_ffrtmphttp_protocol,
++    &ff_file_protocol,
++    &ff_ftp_protocol,
++    &ff_gopher_protocol,
++    &ff_hls_protocol,
++    &ff_http_protocol,
++    &ff_httpproxy_protocol,
++    &ff_icecast_protocol,
++    &ff_mmsh_protocol,
++    &ff_mmst_protocol,
++    &ff_md5_protocol,
++    &ff_pipe_protocol,
++    &ff_prompeg_protocol,
++    &ff_rtmp_protocol,
++    &ff_rtmpt_protocol,
++    &ff_rtp_protocol,
++    &ff_srtp_protocol,
++    &ff_subfile_protocol,
++    &ff_tee_protocol,
++    &ff_tcp_protocol,
++    &ff_udp_protocol,
++    &ff_udplite_protocol,
++    &ff_unix_protocol,
++    NULL };
+diff -ruN ffmpeg-4.3.1-orig/libavutil/avconfig.h ffmpeg-4.3.1/libavutil/avconfig.h
+--- ffmpeg-4.3.1-orig/libavutil/avconfig.h	1970-01-01 03:00:00.000000000 +0300
++++ ffmpeg-4.3.1/libavutil/avconfig.h	2021-06-10 15:07:03.344319628 +0300
+@@ -0,0 +1,6 @@
++/* Generated by ffmpeg configure */
++#ifndef AVUTIL_AVCONFIG_H
++#define AVUTIL_AVCONFIG_H
++#define AV_HAVE_BIGENDIAN 0
++#define AV_HAVE_FAST_UNALIGNED 1
++#endif /* AVUTIL_AVCONFIG_H */
+diff -ruN ffmpeg-4.3.1-orig/libavutil/ffversion.h ffmpeg-4.3.1/libavutil/ffversion.h
+--- ffmpeg-4.3.1-orig/libavutil/ffversion.h	1970-01-01 03:00:00.000000000 +0300
++++ ffmpeg-4.3.1/libavutil/ffversion.h	2021-06-10 15:07:22.352730682 +0300
+@@ -0,0 +1,5 @@
++/* Automatically generated by version.sh, do not manually edit! */
++#ifndef AVUTIL_FFVERSION_H
++#define AVUTIL_FFVERSION_H
++#define FFMPEG_VERSION "4.3.1"
++#endif /* AVUTIL_FFVERSION_H */
