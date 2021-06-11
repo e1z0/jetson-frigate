@@ -77,3 +77,7 @@ docker run -d \
  -e FRIGATE_RTSP_PASSWORD='pass' \
  frigate:latest
 ```
+
+## TODO
+
+* Backport support for  [https://github.com/jocover/jetson-ffmpeg/commit/20067187641389ba309bd3ca51933718b6b475ef](yuvj420p)
