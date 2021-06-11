@@ -13,12 +13,13 @@ RUN     \
         apt-get -yqq update && \
         mkdir -p /opt/nvidia/l4t-packages/ && \
         touch /opt/nvidia/l4t-packages/.nv-l4t-disable-boot-fw-update-in-preinstall && \
+        echo "/usr/lib/aarch64-linux-gnu/tegra" > /etc/ld.so.conf.d/aarch64-linux-gnu_GL.conf && ldconfig && \
         apt-get -yqq -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confnew install \
-        --no-install-recommends ca-certificates expat libgomp1 cmake git nvidia-l4t-core nvidia-l4t-jetson-multimedia-api && \
+        --no-install-recommends ca-certificates expat libgomp1 cmake git nvidia-l4t-core nvidia-l4t-jetson-multimedia-api wget && \
         apt-get autoremove -y && \
         apt-get clean -y
 
-ENV UDEV=1
+#ENV UDEV=1
 
 FROM base as build
 
@@ -423,6 +424,7 @@ RUN \
         DIR=/tmp/ffmpeg && mkdir -p ${DIR} && cd ${DIR} && \
         wget -q https://raw.githubusercontent.com/e1z0/jetson-frigate/main/ffmpeg/nvmpi.patch && \
         patch -p1 < nvmpi.patch && \
+#        echo "/usr/lib/aarch64-linux-gnu/tegra" > /etc/ld.so.conf.d/aarch64-linux-gnu_GL.conf && ldconfig && \
         ./configure \
         --enable-nvmpi \
         --disable-debug \
@@ -464,7 +466,7 @@ RUN \
         --enable-v4l2_m2m \
         --enable-neon \
         --extra-cflags="-I${PREFIX}/include" \
-        --extra-ldflags="-L${PREFIX}/lib" && \
+        --extra-ldflags="-L${PREFIX}/lib"  && \
         make -j $(nproc) && \
         make -j $(nproc) install && \
         make tools/zmqsend && cp tools/zmqsend ${PREFIX}/bin/ && \
@@ -478,7 +480,8 @@ RUN \
         cp -rv /opt/ffmpeg/lib/* /usr/local/lib/ && \
         cp ${PREFIX}/bin/* /usr/local/bin/ && \
         cp -r ${PREFIX}/share/ffmpeg /usr/local/share/ && ls /usr/local/lib &&  \
-        LD_LIBRARY_PATH=/usr/local/lib ffmpeg -buildconf && \
+        ldd /usr/local/bin/ffmpeg && \
+#        LD_LIBRARY_PATH=/usr/local/lib ffmpeg -buildconf && \
         cp -r ${PREFIX}/include/libav* ${PREFIX}/include/libpostproc ${PREFIX}/include/libsw* /usr/local/include && \
         mkdir -p /usr/local/lib/pkgconfig && \
         for pc in ${PREFIX}/lib/pkgconfig/libav*.pc ${PREFIX}/lib/pkgconfig/libpostproc.pc ${PREFIX}/lib/pkgconfig/libsw*.pc; do \
@@ -494,4 +497,4 @@ ENTRYPOINT  ["ffmpeg"]
 
 COPY --from=build /usr/local /usr/local/
 
-# Run ffmpeg with -c:v h264_v4l2m2m to enable HW accell for decoding on raspberry pi4 64-bit
+# Run ffmpeg with -c:v h264_nvmpi to enable HW accell for decoding on Jetson Nano

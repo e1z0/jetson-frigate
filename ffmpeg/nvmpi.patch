@@ -861,7 +861,7 @@ diff -ruN ffmpeg-4.3.1-orig/libavcodec/codec_list.c ffmpeg-4.3.1/libavcodec/code
 +    NULL };
 diff -ruN ffmpeg-4.3.1-orig/libavcodec/nvmpi_dec.c ffmpeg-4.3.1/libavcodec/nvmpi_dec.c
 --- ffmpeg-4.3.1-orig/libavcodec/nvmpi_dec.c	1970-01-01 03:00:00.000000000 +0300
-+++ ffmpeg-4.3.1/libavcodec/nvmpi_dec.c	2021-06-10 15:04:09.672570281 +0300
++++ ffmpeg-4.3.1/libavcodec/nvmpi_dec.c	2021-06-11 15:13:51.325854233 +0300
 @@ -0,0 +1,170 @@
 +#include <stdio.h>
 +#include <stdlib.h>
@@ -918,8 +918,8 @@ diff -ruN ffmpeg-4.3.1-orig/libavcodec/nvmpi_dec.c ffmpeg-4.3.1/libavcodec/nvmpi
 +
 +	if(avctx->pix_fmt ==AV_PIX_FMT_NONE){
 +		 avctx->pix_fmt=AV_PIX_FMT_YUV420P;
-+	}else if(avctx-> pix_fmt != AV_PIX_FMT_YUV420P){
-+		av_log(avctx, AV_LOG_ERROR, "Invalid Pix_FMT for NVMPI Only yuv420p is supported\n");
++        }else if(avctx-> pix_fmt != AV_PIX_FMT_YUV420P && avctx-> pix_fmt != AV_PIX_FMT_YUVJ420P){
++		av_log(avctx, AV_LOG_ERROR, "Invalid Pix_FMT for NVMPI Only yuv420p or yuvj420p is supported\n");
 +		return AVERROR_INVALIDDATA;
 +	}
 +

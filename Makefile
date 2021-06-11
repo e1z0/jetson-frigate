@@ -38,7 +38,7 @@ aarch64_wheels:
 jetson_ffmpeg:
 	docker build --tag blakeblackshear/frigate-ffmpeg:1.0.0-aarch64 --file docker/Dockerfile.ffmpeg.aarch64-jetson .
 
-jetson_frigate:
+jetson_frigate: version web
 	docker build --tag frigate-base --build-arg ARCH=aarch64 --build-arg FFMPEG_VERSION=1.0.0 --build-arg WHEELS_VERSION=1.0.3 --file docker/Dockerfile.base .
 	docker build --tag frigate --file docker/Dockerfile.aarch64 .
 
